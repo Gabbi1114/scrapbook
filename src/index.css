@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Pacifico&family=Amatic+SC:wght@400;700&family=Indie+Flower&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-handwriting: "Caveat", cursive;
+  --font-sans: "Nunito", sans-serif;
+  --font-pacifico: "Pacifico", cursive;
+  --font-amatic: "Amatic SC", cursive;
+  --font-indie: "Indie Flower", cursive;
+}
+
+/* 3D Flipbook CSS */
+.perspective-1500 {
+  perspective: 1500px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+.rotate-y-minus-180 {
+  transform: rotateY(-180deg);
+}
+
+.origin-left-center {
+  transform-origin: left center;
+}
+
+/* Cute Patterns */
+.pattern-polka {
+  background-image: radial-gradient(rgba(0,0,0,0.1) 2px, transparent 2px);
+  background-size: 20px 20px;
+}
+
+.pattern-grid {
+  background-image: linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.pattern-lines {
+  background-image: linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px);
+  background-size: 100% 24px;
+}
