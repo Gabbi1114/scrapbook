@@ -7,3 +7,8 @@ coverage/
 .env*
 !.env.example
 server/share-data/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
