@@ -412,8 +412,7 @@ export default function App() {
     shareEditUntilIso !== null &&
     Number.isFinite(shareEditDeadlineMs) &&
     Date.now() > shareEditDeadlineMs;
-  const canEditSharedLink =
-    sharedViewMode && currentShareId !== null && !isShareEditExpired;
+  const canEditSharedLink = sharedViewMode && !isShareEditExpired;
   void shareDeadlineTick;
 
   const showPublishLinkUi = !sharedViewMode && canPublishShareLinks();
