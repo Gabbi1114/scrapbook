@@ -9,7 +9,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import multer from "multer";
+import sharp from "sharp";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "share-data");
@@ -27,6 +28,11 @@ const hasR2Config =
   R2_ACCESS_KEY_ID &&
   R2_SECRET_ACCESS_KEY &&
   R2_BUCKET;
+const MAX_SHARE_BYTES = 15 * 1024 * 1024;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 30 * 1024 * 1024 },
+});
 const r2 = hasR2Config
   ? new S3Client({
       region: "auto",
@@ -95,6 +101,45 @@ async function persistShare(id, payload) {
   );
 }
 
+function currentMediaBytes(shareData) {
+  const n = Number(shareData?.mediaBytes || 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+function pagesJsonBytes(pages) {
+  return Buffer.byteLength(JSON.stringify({ v: 1, pages }), "utf8");
+}
+
+function isImageMime(m) {
+  return typeof m === "string" && m.startsWith("image/");
+}
+
+async function convertImageForStorage(inputBuffer, mime) {
+  // Keep animated gifs as-is; converting often drops animation frames.
+  if (mime === "image/gif") {
+    return {
+      body: inputBuffer,
+      contentType: "image/gif",
+      ext: ".gif",
+    };
+  }
+
+  const img = sharp(inputBuffer, { failOn: "none" }).rotate();
+  const meta = await img.metadata();
+  const resized = img.resize({
+    width: meta.width && meta.width > 1920 ? 1920 : undefined,
+    height: meta.height && meta.height > 1920 ? 1920 : undefined,
+    fit: "inside",
+    withoutEnlargement: true,
+  });
+  const out = await resized.webp({ quality: 72 }).toBuffer();
+  return {
+    body: out,
+    contentType: "image/webp",
+    ext: ".webp",
+  };
+}
+
 app.post("/api/share", async (req, res) => {
   try {
     const requiredSecret = process.env.SHARE_CREATE_SECRET;
@@ -118,7 +163,18 @@ app.post("/api/share", async (req, res) => {
       editUntil = new Date(Date.now() + days * 86400000).toISOString();
     }
     const id = randomBytes(12).toString("base64url");
-    const payload = { v: 1, pages, ...(editUntil ? { editUntil } : {}) };
+    const jsonBytes = pagesJsonBytes(pages);
+    if (jsonBytes > MAX_SHARE_BYTES) {
+      return res.status(413).json({
+        error: "Share is too large. Limit is 15MB per link.",
+      });
+    }
+    const payload = {
+      v: 1,
+      pages,
+      mediaBytes: 0,
+      ...(editUntil ? { editUntil } : {}),
+    };
     await persistShare(id, payload);
     res.json({ id, ...(editUntil ? { editUntil } : {}) });
   } catch (e) {
@@ -154,7 +210,19 @@ app.put("/api/share/:id", async (req, res) => {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
 
-    const payload = { v: 1, pages, ...(editUntil ? { editUntil } : {}) };
+    const mediaBytes = currentMediaBytes(prev);
+    const jsonBytes = pagesJsonBytes(pages);
+    if (jsonBytes + mediaBytes > MAX_SHARE_BYTES) {
+      return res.status(413).json({
+        error: "Share is too large. Limit is 15MB per link.",
+      });
+    }
+    const payload = {
+      v: 1,
+      pages,
+      mediaBytes,
+      ...(editUntil ? { editUntil } : {}),
+    };
     await persistShare(req.params.id, payload);
     res.json({ ok: true });
   } catch (e) {
@@ -163,7 +231,7 @@ app.put("/api/share/:id", async (req, res) => {
   }
 });
 
-app.post("/api/share/:id/upload-url", async (req, res) => {
+app.post("/api/share/:id/upload-media", upload.single("file"), async (req, res) => {
   try {
     if (!r2) {
       return res.status(503).json({
@@ -179,29 +247,48 @@ app.post("/api/share/:id/upload-url", async (req, res) => {
       return res.status(403).json({ error: "edit window expired" });
     }
 
-    const { filename, contentType } = req.body || {};
-    const name = typeof filename === "string" ? filename : "image";
-    const safeName = path
-      .basename(name)
-      .replace(/[^a-zA-Z0-9._-]/g, "_");
-    const ext = path.extname(safeName) || ".bin";
-    const objectName = `${Date.now()}-${randomBytes(6).toString("hex")}${ext}`;
+    const file = req.file;
+    if (!file?.buffer || file.buffer.length === 0) {
+      return res.status(400).json({ error: "file is required" });
+    }
+    if (!isImageMime(file.mimetype)) {
+      return res.status(400).json({ error: "Only image upload is supported." });
+    }
+    const converted = await convertImageForStorage(file.buffer, file.mimetype);
+    const mediaBytes = currentMediaBytes(record.data);
+    const jsonBytes = pagesJsonBytes(record.data.pages || []);
+    if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
+      return res.status(413).json({
+        error: "Storage limit reached (15MB per link).",
+      });
+    }
+
+    const objectName = `${Date.now()}-${randomBytes(6).toString("hex")}${converted.ext}`;
     const key = `${path.basename(req.params.id)}/${objectName}`;
-    const type =
-      typeof contentType === "string" && contentType.length > 0
-        ? contentType
-        : "application/octet-stream";
-    const cmd = new PutObjectCommand({
+
+    await r2.send(new PutObjectCommand({
       Bucket: R2_BUCKET,
       Key: key,
-      ContentType: type,
-    });
-    const uploadUrl = await getSignedUrl(r2, cmd, { expiresIn: 600 });
+      ContentType: converted.contentType,
+      Body: converted.body,
+    }));
+
+    const updatedShare = {
+      ...record.data,
+      mediaBytes: mediaBytes + converted.body.length,
+    };
+    await persistShare(req.params.id, updatedShare);
+
     const base =
       PUBLIC_API_BASE ||
       `${req.protocol}://${req.get("host")}`;
     const objectUrl = `${base}/api/media/${encodeURIComponent(key)}`;
-    res.json({ uploadUrl, objectUrl, key });
+    res.json({
+      objectUrl,
+      key,
+      bytesUsed: updatedShare.mediaBytes,
+      bytesLimit: MAX_SHARE_BYTES,
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });

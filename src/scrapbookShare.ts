@@ -297,8 +297,7 @@ export async function saveSharedPagesById(
   }
 }
 
-type UploadUrlResponse = {
-  uploadUrl: string;
+type UploadMediaResponse = {
   objectUrl: string;
 };
 
@@ -311,34 +310,21 @@ export async function uploadImageFileForShare(
   file: File,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const base = shareApiBase();
-  const api = `${base}/api/share/${encodeURIComponent(shareId)}/upload-url`;
+  const api = `${base}/api/share/${encodeURIComponent(shareId)}/upload-media`;
   try {
+    const form = new FormData();
+    form.append("file", file, file.name || "image");
     const create = await fetch(api, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        filename: file.name || "image",
-        contentType: file.type || "application/octet-stream",
-      }),
+      body: form,
     });
     if (!create.ok) {
       const t = await create.text();
       return { ok: false, error: t || "Could not create upload URL" };
     }
-    const body = (await create.json()) as UploadUrlResponse;
-    if (!body.uploadUrl || !body.objectUrl) {
+    const body = (await create.json()) as UploadMediaResponse;
+    if (!body.objectUrl) {
       return { ok: false, error: "Invalid upload response" };
-    }
-    const put = await fetch(body.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-      },
-      body: file,
-    });
-    if (!put.ok) {
-      const t = await put.text();
-      return { ok: false, error: t || "Upload failed" };
     }
     return { ok: true, url: body.objectUrl };
   } catch (e) {
