@@ -1383,6 +1383,9 @@ function DraggableElement({
   const inv = stageScale > 0 ? 1 / stageScale : 1;
   const dragControls = useDragControls();
   const [isTransforming, setIsTransforming] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoMuted, setVideoMuted] = useState(true);
+  const [isVideoVisible, setIsVideoVisible] = useState(false);
   const isPolaroid = element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
   const canResize = element.type === "image" || element.type === "video" || isPolaroid;
   const baseWidth = canResize
@@ -1491,6 +1494,38 @@ function DraggableElement({
   const resizeHandleClass =
     "absolute z-60 h-3 w-3 rounded-full border border-white bg-stone-800 shadow-md";
 
+  useEffect(() => {
+    if (element.type !== "video") return;
+    const el = videoRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVideoVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.55 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [element.type, element.id]);
+
+  useEffect(() => {
+    if (element.type !== "video") return;
+    const el = videoRef.current;
+    if (!el) return;
+    const syncPlayback = () => {
+      const shouldPlay = isVideoVisible && !document.hidden;
+      if (shouldPlay) {
+        void el.play().catch(() => {});
+      } else {
+        el.pause();
+      }
+    };
+    syncPlayback();
+    document.addEventListener("visibilitychange", syncPlayback);
+    return () => document.removeEventListener("visibilitychange", syncPlayback);
+  }, [element.type, isVideoVisible]);
+
   return (
     <motion.div
       drag={isEditing && !isTransforming}
@@ -1578,14 +1613,27 @@ function DraggableElement({
       )}
       {element.type === "video" && (
         <video
+          ref={videoRef}
           src={element.content}
-          controls
+          autoPlay
+          loop
+          muted={videoMuted}
           playsInline
           preload="metadata"
           className="object-cover rounded-sm bg-black"
           style={{
             width: element.width || 320,
             height: element.height || 180,
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isEditing) {
+              onSelect();
+              return;
+            }
+            setVideoMuted((m) => !m);
+            const el = videoRef.current;
+            if (el) void el.play().catch(() => {});
           }}
         />
       )}
