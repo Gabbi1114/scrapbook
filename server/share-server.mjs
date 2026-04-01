@@ -54,16 +54,48 @@ function shareFilePath(id) {
   return path.join(DATA_DIR, `${path.basename(id)}.json`);
 }
 
-function loadShareOrNull(id) {
+async function loadShareOrNull(id) {
+  const safeId = path.basename(id);
   const file = shareFilePath(id);
-  if (!fs.existsSync(file)) return null;
-  return {
-    file,
-    data: JSON.parse(fs.readFileSync(file, "utf8")),
-  };
+  if (fs.existsSync(file)) {
+    return {
+      file,
+      data: JSON.parse(fs.readFileSync(file, "utf8")),
+    };
+  }
+  if (!r2) return null;
+  try {
+    const out = await r2.send(
+      new GetObjectCommand({ Bucket: R2_BUCKET, Key: `shares/${safeId}.json` }),
+    );
+    if (!out.Body || typeof out.Body.transformToString !== "function") {
+      return null;
+    }
+    const text = await out.Body.transformToString();
+    const data = JSON.parse(text);
+    fs.writeFileSync(file, text, "utf8");
+    return { file, data };
+  } catch {
+    return null;
+  }
 }
 
-app.post("/api/share", (req, res) => {
+async function persistShare(id, payload) {
+  const file = shareFilePath(id);
+  const text = JSON.stringify(payload);
+  fs.writeFileSync(file, text, "utf8");
+  if (!r2) return;
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: `shares/${path.basename(id)}.json`,
+      ContentType: "application/json",
+      Body: text,
+    }),
+  );
+}
+
+app.post("/api/share", async (req, res) => {
   try {
     const requiredSecret = process.env.SHARE_CREATE_SECRET;
     if (requiredSecret) {
@@ -86,9 +118,8 @@ app.post("/api/share", (req, res) => {
       editUntil = new Date(Date.now() + days * 86400000).toISOString();
     }
     const id = randomBytes(12).toString("base64url");
-    const file = path.join(DATA_DIR, `${id}.json`);
     const payload = { v: 1, pages, ...(editUntil ? { editUntil } : {}) };
-    fs.writeFileSync(file, JSON.stringify(payload), "utf8");
+    await persistShare(id, payload);
     res.json({ id, ...(editUntil ? { editUntil } : {}) });
   } catch (e) {
     console.error(e);
@@ -96,17 +127,17 @@ app.post("/api/share", (req, res) => {
   }
 });
 
-app.get("/api/share/:id", (req, res) => {
-  const record = loadShareOrNull(req.params.id);
+app.get("/api/share/:id", async (req, res) => {
+  const record = await loadShareOrNull(req.params.id);
   if (!record) {
     return res.status(404).json({ error: "not found" });
   }
   res.type("json").send(JSON.stringify(record.data));
 });
 
-app.put("/api/share/:id", (req, res) => {
+app.put("/api/share/:id", async (req, res) => {
   try {
-    const record = loadShareOrNull(req.params.id);
+    const record = await loadShareOrNull(req.params.id);
     if (!record) {
       return res.status(404).json({ error: "not found" });
     }
@@ -124,7 +155,7 @@ app.put("/api/share/:id", (req, res) => {
     }
 
     const payload = { v: 1, pages, ...(editUntil ? { editUntil } : {}) };
-    fs.writeFileSync(record.file, JSON.stringify(payload), "utf8");
+    await persistShare(req.params.id, payload);
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -140,7 +171,7 @@ app.post("/api/share/:id/upload-url", async (req, res) => {
           "R2 is not configured. Set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET.",
       });
     }
-    const record = loadShareOrNull(req.params.id);
+    const record = await loadShareOrNull(req.params.id);
     if (!record) return res.status(404).json({ error: "share not found" });
     const editUntil =
       typeof record.data?.editUntil === "string" ? record.data.editUntil : null;
