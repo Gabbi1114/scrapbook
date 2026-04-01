@@ -185,7 +185,7 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
     `scrapbook-video-${Date.now()}-${randomBytes(5).toString("hex")}`,
   );
   const inputPath = `${tmpBase}${extFromMime(mime, ".bin")}`;
-  const outputPath = `${tmpBase}.mp4`;
+  const outputPath = `${tmpBase}-out.mp4`;
   try {
     await fsp.writeFile(inputPath, inputBuffer);
     const probe = await execFileAsync(ffprobeStatic.path, [
@@ -210,7 +210,7 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
       "-t",
       String(MAX_VIDEO_SECONDS),
       "-vf",
-      "scale='min(854,iw)':-2:flags=lanczos",
+      "scale=min(854\\,iw):-2:flags=lanczos",
       "-c:v",
       "libx264",
       "-preset",
