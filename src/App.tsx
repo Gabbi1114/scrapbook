@@ -1627,10 +1627,7 @@ function DraggableElement({
           }}
           onClick={(e) => {
             e.stopPropagation();
-            if (isEditing) {
-              onSelect();
-              return;
-            }
+            if (isEditing) onSelect();
             setVideoMuted((m) => !m);
             const el = videoRef.current;
             if (el) void el.play().catch(() => {});
