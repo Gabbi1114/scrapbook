@@ -7,10 +7,16 @@ import express from "express";
 import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
+import os from "os";
+import { promises as fsp } from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import multer from "multer";
 import sharp from "sharp";
+import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "share-data");
@@ -29,9 +35,11 @@ const hasR2Config =
   R2_SECRET_ACCESS_KEY &&
   R2_BUCKET;
 const MAX_SHARE_BYTES = 15 * 1024 * 1024;
+const MAX_VIDEO_SECONDS = 60;
+const execFileAsync = promisify(execFile);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 30 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
 const r2 = hasR2Config
   ? new S3Client({
@@ -114,6 +122,10 @@ function isImageMime(m) {
   return typeof m === "string" && m.startsWith("image/");
 }
 
+function isVideoMime(m) {
+  return typeof m === "string" && m.startsWith("video/");
+}
+
 async function convertImageForStorage(inputBuffer, mime) {
   // Keep animated gifs as-is; converting often drops animation frames.
   if (mime === "image/gif") {
@@ -132,12 +144,103 @@ async function convertImageForStorage(inputBuffer, mime) {
     fit: "inside",
     withoutEnlargement: true,
   });
-  const out = await resized.webp({ quality: 72 }).toBuffer();
+  const avif = await resized.avif({ quality: 45, effort: 6 }).toBuffer();
+  const webp = await resized.webp({ quality: 68, effort: 5 }).toBuffer();
+  if (avif.length <= webp.length) {
+    return {
+      body: avif,
+      contentType: "image/avif",
+      ext: ".avif",
+    };
+  }
   return {
-    body: out,
+    body: webp,
     contentType: "image/webp",
     ext: ".webp",
   };
+}
+
+function extFromMime(mime, fallback = ".bin") {
+  const m = String(mime || "").toLowerCase();
+  if (m === "image/webp") return ".webp";
+  if (m === "image/png") return ".png";
+  if (m === "image/jpeg") return ".jpg";
+  if (m === "image/gif") return ".gif";
+  if (m === "video/mp4") return ".mp4";
+  if (m === "video/webm") return ".webm";
+  if (m === "video/quicktime") return ".mov";
+  return fallback;
+}
+
+async function transcodeVideoForStorage(inputBuffer, mime) {
+  if (!ffmpegPath || !ffprobeStatic.path) {
+    return {
+      body: inputBuffer,
+      contentType: mime || "application/octet-stream",
+      ext: extFromMime(mime, ".mp4"),
+    };
+  }
+  const tmpBase = path.join(
+    os.tmpdir(),
+    `scrapbook-video-${Date.now()}-${randomBytes(5).toString("hex")}`,
+  );
+  const inputPath = `${tmpBase}${extFromMime(mime, ".bin")}`;
+  const outputPath = `${tmpBase}.mp4`;
+  try {
+    await fsp.writeFile(inputPath, inputBuffer);
+    const probe = await execFileAsync(ffprobeStatic.path, [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      inputPath,
+    ]);
+    const durationSec = Number.parseFloat((probe.stdout || "").trim());
+    if (Number.isFinite(durationSec) && durationSec > MAX_VIDEO_SECONDS) {
+      const err = new Error("Video exceeds 1 minute limit.");
+      err.code = "VIDEO_TOO_LONG";
+      throw err;
+    }
+    await execFileAsync(ffmpegPath, [
+      "-y",
+      "-i",
+      inputPath,
+      "-t",
+      String(MAX_VIDEO_SECONDS),
+      "-vf",
+      "scale='min(854,iw)':-2:flags=lanczos",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "32",
+      "-maxrate",
+      "700k",
+      "-bufsize",
+      "1400k",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "96k",
+      "-movflags",
+      "+faststart",
+      "-pix_fmt",
+      "yuv420p",
+      outputPath,
+    ]);
+    const out = await fsp.readFile(outputPath);
+    return {
+      body: out,
+      contentType: "video/mp4",
+      ext: ".mp4",
+    };
+  } finally {
+    void fsp.unlink(inputPath).catch(() => {});
+    void fsp.unlink(outputPath).catch(() => {});
+  }
 }
 
 app.post("/api/share", async (req, res) => {
@@ -251,10 +354,24 @@ app.post("/api/share/:id/upload-media", upload.single("file"), async (req, res) 
     if (!file?.buffer || file.buffer.length === 0) {
       return res.status(400).json({ error: "file is required" });
     }
-    if (!isImageMime(file.mimetype)) {
-      return res.status(400).json({ error: "Only image upload is supported." });
+    const mime = String(file.mimetype || "").toLowerCase();
+    let converted;
+    if (isImageMime(mime)) {
+      converted = await convertImageForStorage(file.buffer, mime);
+    } else if (isVideoMime(mime)) {
+      try {
+        converted = await transcodeVideoForStorage(file.buffer, mime);
+      } catch (e) {
+        if (e?.code === "VIDEO_TOO_LONG") {
+          return res.status(413).json({ error: "One video can be maximum 1 minute." });
+        }
+        throw e;
+      }
+    } else {
+      return res.status(400).json({
+        error: "Only image/video upload is supported.",
+      });
     }
-    const converted = await convertImageForStorage(file.buffer, file.mimetype);
     const mediaBytes = currentMediaBytes(record.data);
     const jsonBytes = pagesJsonBytes(record.data.pages || []);
     if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {

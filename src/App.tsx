@@ -32,6 +32,7 @@ import {
   fetchSharedBundleById,
   saveSharedPagesById,
   uploadImageFileForShare,
+  SHARE_STORAGE_LIMIT_BYTES,
   resolveShareableUrl,
   canPublishShareLinks,
 } from "./scrapbookShare";
@@ -206,6 +207,10 @@ export default function App() {
   const [history, setHistory] = useState<PageData[][]>([init.pages]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [shareHint, setShareHint] = useState<string | null>(null);
+  const [shareStorageUsedBytes, setShareStorageUsedBytes] = useState(0);
+  const [shareStorageLimitBytes, setShareStorageLimitBytes] = useState(
+    SHARE_STORAGE_LIMIT_BYTES,
+  );
   /** Server `?share=` only: ISO time after which “Make my own copy” is hidden. */
   const [shareEditUntilIso, setShareEditUntilIso] = useState<string | null>(
     null,
@@ -386,6 +391,7 @@ export default function App() {
         setCurrentShareId(sid);
         setPages(bundle.pages);
         setShareEditUntilIso(bundle.editUntil);
+        setShareStorageUsedBytes(bundle.mediaBytes);
         setSharedViewMode(true);
         setHistory([bundle.pages]);
         setHistoryIndex(0);
@@ -519,6 +525,28 @@ export default function App() {
     setSelectedElementId(newElement.id);
   };
 
+  const storageLeftMb = Math.max(
+    0,
+    (shareStorageLimitBytes - shareStorageUsedBytes) / (1024 * 1024),
+  );
+
+  const probeVideoDurationSec = (file: File) =>
+    new Promise<number>((resolve, reject) => {
+      const video = document.createElement("video");
+      const url = URL.createObjectURL(file);
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        const d = video.duration;
+        URL.revokeObjectURL(url);
+        resolve(Number.isFinite(d) ? d : 0);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not read video metadata."));
+      };
+      video.src = url;
+    });
+
   const deleteElement = (pageId: string, elementId: string) => {
     updatePagesWithHistory(
       pages.map((p) => {
@@ -586,6 +614,12 @@ export default function App() {
           window.alert(`Image upload failed: ${uploaded.error}`);
           return;
         }
+        if (typeof uploaded.bytesUsed === "number") {
+          setShareStorageUsedBytes(uploaded.bytesUsed);
+        }
+        if (typeof uploaded.bytesLimit === "number") {
+          setShareStorageLimitBytes(uploaded.bytesLimit);
+        }
         addElement(pageId, "image", uploaded.url);
         setShareHint("Image uploaded.");
         window.setTimeout(() => setShareHint(null), 1400);
@@ -598,6 +632,57 @@ export default function App() {
     window.alert(
       "Please create/open a share link first, then upload photos there. This keeps images in cloud storage instead of huge base64 JSON.",
     );
+    e.target.value = "";
+  };
+
+  const handleVideoUpload = async (
+    pageId: string,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!currentShareId) {
+      window.alert(
+        "Please create/open a share link first, then upload videos there.",
+      );
+      e.target.value = "";
+      return;
+    }
+    if (!file.type.startsWith("video/")) {
+      window.alert("Please select a video file.");
+      e.target.value = "";
+      return;
+    }
+    try {
+      const sec = await probeVideoDurationSec(file);
+      if (sec > 60) {
+        window.alert("One video can be maximum 1 minute.");
+        e.target.value = "";
+        return;
+      }
+    } catch {
+      window.alert("Could not validate video duration.");
+      e.target.value = "";
+      return;
+    }
+
+    setShareHint("Uploading video...");
+    const uploaded = await uploadImageFileForShare(currentShareId, file);
+    if (uploaded.ok === false) {
+      setShareHint(null);
+      window.alert(`Video upload failed: ${uploaded.error}`);
+      e.target.value = "";
+      return;
+    }
+    if (typeof uploaded.bytesUsed === "number") {
+      setShareStorageUsedBytes(uploaded.bytesUsed);
+    }
+    if (typeof uploaded.bytesLimit === "number") {
+      setShareStorageLimitBytes(uploaded.bytesLimit);
+    }
+    addElement(pageId, "video", uploaded.url);
+    setShareHint("Video uploaded.");
+    window.setTimeout(() => setShareHint(null), 1400);
     e.target.value = "";
   };
 
@@ -764,6 +849,11 @@ export default function App() {
 
         {/* Bottom Floating Controls */}
         <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50 max-w-[95vw]">
+          {sharedViewMode && (
+            <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
+              Storage left: {storageLeftMb.toFixed(2)} MB
+            </p>
+          )}
           {shareHint && (
             <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
               {shareHint}
@@ -923,6 +1013,7 @@ export default function App() {
                 setBendIntensity={setBendIntensity}
                 addElement={addElement}
                 handleImageUpload={handleImageUpload}
+                handleVideoUpload={handleVideoUpload}
                 updatePageBackground={updatePageBackground}
                 updatePagePattern={updatePagePattern}
                 updateElement={updateElement}
@@ -1293,12 +1384,12 @@ function DraggableElement({
   const dragControls = useDragControls();
   const [isTransforming, setIsTransforming] = useState(false);
   const isPolaroid = element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
-  const canResize = element.type === "image" || isPolaroid;
+  const canResize = element.type === "image" || element.type === "video" || isPolaroid;
   const baseWidth = canResize
-    ? (element.width || (isPolaroid ? 210 : 192))
+    ? (element.width || (isPolaroid ? 210 : element.type === "video" ? 320 : 192))
     : undefined;
   const baseHeight = canResize
-    ? (element.height || (isPolaroid ? 260 : 192))
+    ? (element.height || (isPolaroid ? 260 : element.type === "video" ? 180 : 192))
     : undefined;
 
   const startResize = (
@@ -1483,6 +1574,19 @@ function DraggableElement({
             height: element.height ?? "auto",
           }}
           draggable={false}
+        />
+      )}
+      {element.type === "video" && (
+        <video
+          src={element.content}
+          controls
+          playsInline
+          preload="metadata"
+          className="object-cover rounded-sm bg-black"
+          style={{
+            width: element.width || 320,
+            height: element.height || 180,
+          }}
         />
       )}
       {isEditing && isSelected && (

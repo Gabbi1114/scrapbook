@@ -6,7 +6,7 @@ export const SHARE_HASH_PREFIX = "s=";
 /** Stay under common browser / server URL limits when possible */
 export const MAX_SHARE_HASH_CHARS = 55_000;
 
-export type ElementType = "image" | "text" | "sticker";
+export type ElementType = "image" | "video" | "text" | "sticker";
 
 export interface PageElement {
   id: string;
@@ -49,7 +49,7 @@ export function parsePayloadV1(raw: unknown): PageData[] | null {
 }
 
 function isElementType(t: unknown): t is ElementType {
-  return t === "image" || t === "text" || t === "sticker";
+  return t === "image" || t === "video" || t === "text" || t === "sticker";
 }
 
 function parseElement(raw: unknown): PageElement | null {
@@ -205,6 +205,7 @@ export type SharedScrapbookBundle = {
   pages: PageData[];
   /** ISO8601 end of edit window, or null if unlimited / hash-only / legacy share */
   editUntil: string | null;
+  mediaBytes: number;
 };
 
 export function parseSharedScrapbookResponse(
@@ -213,14 +214,19 @@ export function parseSharedScrapbookResponse(
   const pages = parsePayloadV1(raw);
   if (!pages) return null;
   let editUntil: string | null = null;
+  let mediaBytes = 0;
   if (raw && typeof raw === "object") {
     const eu = (raw as Record<string, unknown>).editUntil;
     if (typeof eu === "string" && eu.length > 0) {
       const t = Date.parse(eu);
       if (!Number.isNaN(t)) editUntil = eu;
     }
+    const mb = (raw as Record<string, unknown>).mediaBytes;
+    if (typeof mb === "number" && Number.isFinite(mb) && mb > 0) {
+      mediaBytes = Math.floor(mb);
+    }
   }
-  return { pages, editUntil };
+  return { pages, editUntil, mediaBytes };
 }
 
 /** POST scrapbook to server; returns short id for `?share=id` links. */
@@ -299,6 +305,8 @@ export async function saveSharedPagesById(
 
 type UploadMediaResponse = {
   objectUrl: string;
+  bytesUsed?: number;
+  bytesLimit?: number;
 };
 
 /**
@@ -308,7 +316,10 @@ type UploadMediaResponse = {
 export async function uploadImageFileForShare(
   shareId: string,
   file: File,
-): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; url: string; bytesUsed?: number; bytesLimit?: number }
+  | { ok: false; error: string }
+> {
   const base = shareApiBase();
   const api = `${base}/api/share/${encodeURIComponent(shareId)}/upload-media`;
   try {
@@ -326,11 +337,18 @@ export async function uploadImageFileForShare(
     if (!body.objectUrl) {
       return { ok: false, error: "Invalid upload response" };
     }
-    return { ok: true, url: body.objectUrl };
+    return {
+      ok: true,
+      url: body.objectUrl,
+      bytesUsed: body.bytesUsed,
+      bytesLimit: body.bytesLimit,
+    };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
 }
+
+export const SHARE_STORAGE_LIMIT_BYTES = 15 * 1024 * 1024;
 
 /** @deprecated Prefer fetchSharedBundleById when you need edit deadlines. */
 export async function fetchSharedPagesById(

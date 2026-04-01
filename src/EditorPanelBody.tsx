@@ -109,6 +109,7 @@ export function EditorPanelBody({
   setBendIntensity,
   addElement,
   handleImageUpload,
+  handleVideoUpload,
   updatePageBackground,
   updatePagePattern,
   updateElement,
@@ -126,6 +127,7 @@ export function EditorPanelBody({
   setBendIntensity: (v: number) => void;
   addElement: (pageId: string, type: ElementType, content: string) => void;
   handleImageUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
+  handleVideoUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
   updatePageBackground: (pageId: string, bg: string) => void;
   updatePagePattern: (pageId: string, pattern: string) => void;
   updateElement: (
@@ -301,16 +303,28 @@ export function EditorPanelBody({
       />
       {openAccordion === "photo" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
-          <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50">
-            <ImageIcon size={22} />
-            <span className="text-sm font-medium">Upload photo</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => handleImageUpload(selectedPageId, e)}
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50">
+              <ImageIcon size={22} />
+              <span className="text-sm font-medium">Upload photo</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleImageUpload(selectedPageId, e)}
+              />
+            </label>
+            <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50">
+              <ImageIcon size={22} />
+              <span className="text-sm font-medium">Upload video</span>
+              <input
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => void handleVideoUpload(selectedPageId, e)}
+              />
+            </label>
+          </div>
           <div className="rounded-lg border border-stone-200 bg-white p-2">
             <p className="mb-2 text-xs font-medium text-stone-600">
               Paste GIF URL
@@ -596,15 +610,17 @@ export function EditorPanelBody({
             <p className="mb-2 text-xs text-stone-500">Width</p>
             <input
               type="range"
-              min={selectedEl.type === "image" ? "50" : "16"}
+              min={selectedEl.type === "image" || selectedEl.type === "video" ? "50" : "16"}
               max={
                 selectedEl.type === "image" ||
+                selectedEl.type === "video" ||
                 selectedEl.content === POLAROID_STICKER_TOKEN
                   ? "500"
                   : "128"
               }
               value={
                 selectedEl.type === "image" ||
+                selectedEl.type === "video" ||
                 selectedEl.content === POLAROID_STICKER_TOKEN
                   ? selectedEl.width || 192
                   : selectedEl.fontSize || 32
@@ -613,6 +629,7 @@ export function EditorPanelBody({
                 const v = parseInt(e.target.value, 10);
                 if (
                   selectedEl.type === "image" ||
+                  selectedEl.type === "video" ||
                   selectedEl.content === POLAROID_STICKER_TOKEN
                 ) {
                   updateElement(
@@ -633,6 +650,7 @@ export function EditorPanelBody({
             />
           </div>
           {(selectedEl.type === "image" ||
+            selectedEl.type === "video" ||
             selectedEl.content === POLAROID_STICKER_TOKEN) && (
             <div>
               <p className="mb-2 text-xs text-stone-500">Height</p>
