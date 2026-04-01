@@ -377,12 +377,14 @@ export async function resolveShareableUrl(
       reason: "Publishing is disabled in this app build.",
     };
   }
-  const hashTry = tryBuildShareUrl(pages);
   const up = await uploadPagesForShare(pages);
   if (up.ok) return { kind: "server", url: buildShareUrlWithQueryId(up.id) };
-  if (hashTry.ok === true) return { kind: "hash", url: hashTry.url };
   if (up.ok === false) {
-    return { kind: "none", reason: `${hashTry.reason} — ${up.error}` };
+    return {
+      kind: "none",
+      reason:
+        "Could not create a server share link. Check backend/R2 env setup and try again.",
+    };
   }
   return { kind: "none", reason: "Unknown share error" };
 }
