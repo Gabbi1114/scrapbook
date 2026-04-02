@@ -100,6 +100,7 @@ export function EditorPanelBody({
   setAppBackgroundColor,
   backgroundMusicUrl,
   setBackgroundMusicUrl,
+  saveMusicLink,
   addElement,
   handleImageUpload,
   handleVideoUpload,
@@ -120,6 +121,7 @@ export function EditorPanelBody({
   setAppBackgroundColor: (v: string) => void;
   backgroundMusicUrl: string;
   setBackgroundMusicUrl: (v: string) => void;
+  saveMusicLink: () => void;
   addElement: (
     pageId: string,
     type: ElementType,
@@ -517,6 +519,13 @@ export function EditorPanelBody({
               Эхний товшилт/хүрэлтээс хойш тоглоно. Үндсэн дуу 50%, видеоны дууг
               нээхэд 20% болно.
             </p>
+            <button
+              type="button"
+              onClick={saveMusicLink}
+              className="mt-2 rounded-md bg-stone-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-900"
+            >
+              Линк хадгалах
+            </button>
           </div>
         </div>
       )}

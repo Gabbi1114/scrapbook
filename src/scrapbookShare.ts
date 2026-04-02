@@ -33,6 +33,7 @@ export interface PageData {
 interface PayloadV1 {
   v: 1;
   pages: PageData[];
+  musicUrl?: string;
 }
 
 /** Validate `{ v: 1, pages }` from API, file import, or hash JSON. */
@@ -206,6 +207,7 @@ export type SharedScrapbookBundle = {
   /** ISO8601 end of edit window, or null if unlimited / hash-only / legacy share */
   editUntil: string | null;
   mediaBytes: number;
+  musicUrl: string;
 };
 
 export function parseSharedScrapbookResponse(
@@ -215,6 +217,7 @@ export function parseSharedScrapbookResponse(
   if (!pages) return null;
   let editUntil: string | null = null;
   let mediaBytes = 0;
+  let musicUrl = "";
   if (raw && typeof raw === "object") {
     const eu = (raw as Record<string, unknown>).editUntil;
     if (typeof eu === "string" && eu.length > 0) {
@@ -225,18 +228,27 @@ export function parseSharedScrapbookResponse(
     if (typeof mb === "number" && Number.isFinite(mb) && mb > 0) {
       mediaBytes = Math.floor(mb);
     }
+    const mu = (raw as Record<string, unknown>).musicUrl;
+    if (typeof mu === "string") {
+      musicUrl = mu.trim();
+    }
   }
-  return { pages, editUntil, mediaBytes };
+  return { pages, editUntil, mediaBytes, musicUrl };
 }
 
 /** POST scrapbook to server; returns short id for `?share=id` links. */
 export async function uploadPagesForShare(
   pages: PageData[],
+  musicUrl?: string,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const base = shareApiBase();
   const url = `${base}/api/share`;
   const editDays = editDaysForNewServerShare();
-  const requestPayload: PayloadV1 & { editDays?: number } = { v: 1, pages };
+  const requestPayload: PayloadV1 & { editDays?: number } = {
+    v: 1,
+    pages,
+    ...(musicUrl && musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}),
+  };
   if (editDays !== undefined) requestPayload.editDays = editDays;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -284,6 +296,7 @@ export async function fetchSharedBundleById(
 export async function saveSharedPagesById(
   id: string,
   pages: PageData[],
+  musicUrl?: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = shareApiBase();
   const url = `${base}/api/share/${encodeURIComponent(id)}`;
@@ -291,7 +304,11 @@ export async function saveSharedPagesById(
     const r = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ v: 1, pages } as PayloadV1),
+      body: JSON.stringify({
+        v: 1,
+        pages,
+        ...(musicUrl !== undefined ? { musicUrl: musicUrl.trim() } : {}),
+      } as PayloadV1),
     });
     if (!r.ok) {
       const t = await r.text();
@@ -392,6 +409,7 @@ export function buildShareUrlWithQueryId(id: string): string {
 /** Share link: always prefer server random id; hash only as fallback. */
 export async function resolveShareableUrl(
   pages: PageData[],
+  musicUrl?: string,
 ): Promise<
   | { kind: "hash"; url: string }
   | { kind: "server"; url: string }
@@ -403,7 +421,7 @@ export async function resolveShareableUrl(
       reason: "Publishing is disabled in this app build.",
     };
   }
-  const up = await uploadPagesForShare(pages);
+  const up = await uploadPagesForShare(pages, musicUrl);
   if (up.ok) return { kind: "server", url: buildShareUrlWithQueryId(up.id) };
   if (up.ok === false) {
     return {

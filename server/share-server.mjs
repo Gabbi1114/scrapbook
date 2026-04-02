@@ -252,7 +252,7 @@ app.post("/api/share", async (req, res) => {
         return res.status(403).json({ error: "Forbidden" });
       }
     }
-    const { v, pages, editDays } = req.body;
+    const { v, pages, editDays, musicUrl } = req.body;
     if (v !== 1 || !Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
@@ -276,6 +276,9 @@ app.post("/api/share", async (req, res) => {
       v: 1,
       pages,
       mediaBytes: 0,
+      ...(typeof musicUrl === "string" && musicUrl.trim()
+        ? { musicUrl: musicUrl.trim() }
+        : {}),
       ...(editUntil ? { editUntil } : {}),
     };
     await persistShare(id, payload);
@@ -308,7 +311,7 @@ app.put("/api/share/:id", async (req, res) => {
       return res.status(403).json({ error: "edit window expired" });
     }
 
-    const { v, pages } = req.body;
+    const { v, pages, musicUrl } = req.body;
     if (v !== 1 || !Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
@@ -324,6 +327,11 @@ app.put("/api/share/:id", async (req, res) => {
       v: 1,
       pages,
       mediaBytes,
+      ...(typeof musicUrl === "string"
+        ? { musicUrl: musicUrl.trim() }
+        : typeof prev?.musicUrl === "string"
+          ? { musicUrl: prev.musicUrl }
+          : {}),
       ...(editUntil ? { editUntil } : {}),
     };
     await persistShare(req.params.id, payload);

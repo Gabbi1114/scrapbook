@@ -582,6 +582,7 @@ export default function App() {
       if (bundle) {
         setCurrentShareId(sid);
         setPages(bundle.pages);
+        setBackgroundMusicUrl(bundle.musicUrl || "");
         setShareEditUntilIso(bundle.editUntil);
         setShareStorageUsedBytes(bundle.mediaBytes);
         setSharedViewMode(true);
@@ -618,7 +619,7 @@ export default function App() {
 
   const copyShareLink = async () => {
     if (!showPublishLinkUi) return;
-    const resolved = await resolveShareableUrl(pages);
+    const resolved = await resolveShareableUrl(pages, backgroundMusicUrl);
     if (resolved.kind === "hash" || resolved.kind === "server") {
       try {
         await navigator.clipboard.writeText(resolved.url);
@@ -652,10 +653,29 @@ export default function App() {
     window.setTimeout(() => setShareHint(null), 2200);
   };
 
+  const saveMusicLinkNow = async () => {
+    if (!currentShareId || !canEditSharedLink) return;
+    const r = await saveSharedPagesById(
+      currentShareId,
+      pages,
+      backgroundMusicUrl,
+    );
+    if (!r.ok) {
+      setShareHint("Хөгжмийн линк хадгалж чадсангүй. Дахин оролдоно уу.");
+      return;
+    }
+    setShareHint("Хөгжмийн линк хадгалагдлаа.");
+    window.setTimeout(() => setShareHint(null), 1400);
+  };
+
   useEffect(() => {
     if (!canEditSharedLink || !currentShareId) return;
     const id = window.setTimeout(async () => {
-      const r = await saveSharedPagesById(currentShareId, pages);
+      const r = await saveSharedPagesById(
+        currentShareId,
+        pages,
+        backgroundMusicUrl,
+      );
       if (!r.ok) {
         setShareHint(
           "Энэ линк дээрх өөрчлөлтийг хадгалж чадсангүй. Хуудсаа сэргээгээд дахин оролдоно уу.",
@@ -666,7 +686,7 @@ export default function App() {
       window.setTimeout(() => setShareHint(null), 1200);
     }, 700);
     return () => window.clearTimeout(id);
-  }, [canEditSharedLink, currentShareId, pages]);
+  }, [backgroundMusicUrl, canEditSharedLink, currentShareId, pages]);
 
   const turnNext = () => {
     if (currentLeaf < totalLeaves) {
@@ -1326,6 +1346,7 @@ export default function App() {
                 setAppBackgroundColor={setAppBackgroundColor}
                 backgroundMusicUrl={backgroundMusicUrl}
                 setBackgroundMusicUrl={setBackgroundMusicUrl}
+                saveMusicLink={saveMusicLinkNow}
                 addElement={addElement}
                 handleImageUpload={handleImageUpload}
                 handleVideoUpload={handleVideoUpload}
