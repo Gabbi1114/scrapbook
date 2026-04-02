@@ -11,7 +11,6 @@ import {
   Trash2,
   Palette,
   Sticker,
-  BookOpen,
   MousePointerClick,
   Files,
   Plus,
@@ -66,14 +65,6 @@ export function AccordionTrigger({
 
 const STICKERS = ["🌸", "✨", "💖", "🎀", "🧸", "🦋", "🎈", "🎨", "📸", "⭐"];
 const POLAROID_STICKER_TOKEN = "__POLAROID__";
-const BACKGROUNDS = [
-  "bg-rose-200",
-  "bg-orange-50",
-  "bg-blue-50",
-  "bg-green-50",
-  "bg-purple-50",
-  "bg-yellow-50",
-];
 const PATTERNS = ["pattern-polka", "pattern-grid", "pattern-lines", ""];
 const FONTS = [
   { name: "Гар бичмэл", value: "var(--font-handwriting)" },
@@ -105,8 +96,8 @@ export function EditorPanelBody({
   pages,
   openAccordion,
   setOpenAccordion,
-  bendIntensity,
-  setBendIntensity,
+  appBackgroundColor,
+  setAppBackgroundColor,
   backgroundMusicUrl,
   setBackgroundMusicUrl,
   addElement,
@@ -125,11 +116,16 @@ export function EditorPanelBody({
   pages: PageData[];
   openAccordion: EditorAccordionId | null;
   setOpenAccordion: Dispatch<SetStateAction<EditorAccordionId | null>>;
-  bendIntensity: number;
-  setBendIntensity: (v: number) => void;
+  appBackgroundColor: string;
+  setAppBackgroundColor: (v: string) => void;
   backgroundMusicUrl: string;
   setBackgroundMusicUrl: (v: string) => void;
-  addElement: (pageId: string, type: ElementType, content: string) => void;
+  addElement: (
+    pageId: string,
+    type: ElementType,
+    content: string,
+    opts?: { width?: number; height?: number },
+  ) => void;
   handleImageUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
   handleVideoUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
   updatePageBackground: (pageId: string, bg: string) => void;
@@ -272,6 +268,23 @@ export function EditorPanelBody({
   const selectedEl = pages
     .flatMap((p) => p.elements)
     .find((e) => e.id === selectedElementId);
+  const selectedPageBg = pages.find((p) => p.id === selectedPageId)?.background || "";
+  const colorValue =
+    /^#[0-9a-f]{6}$/i.test(selectedPageBg)
+      ? selectedPageBg
+      : selectedPageBg === "bg-rose-200"
+        ? "#fecdd3"
+        : selectedPageBg === "bg-orange-50"
+          ? "#fff7ed"
+          : selectedPageBg === "bg-blue-50"
+            ? "#eff6ff"
+            : selectedPageBg === "bg-green-50"
+              ? "#f0fdf4"
+              : selectedPageBg === "bg-purple-50"
+                ? "#faf5ff"
+                : selectedPageBg === "bg-yellow-50"
+                  ? "#fefce8"
+                  : "#f5f5f4";
 
   return (
     <div className="space-y-2">
@@ -448,16 +461,21 @@ export function EditorPanelBody({
         <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div>
             <p className="mb-2 text-xs text-stone-500">Дэвсгэр өнгө</p>
-            <div className="flex flex-wrap gap-2">
-              {BACKGROUNDS.map((bg) => (
-                <button
-                  key={bg}
-                  type="button"
-                  onClick={() => updatePageBackground(selectedPageId, bg)}
-                  className={`h-8 w-8 rounded-full border-2 ${bg} ${pages.find((p) => p.id === selectedPageId)?.background === bg ? "border-stone-800" : "border-transparent"}`}
-                />
-              ))}
-            </div>
+            <input
+              type="color"
+              value={colorValue}
+              onChange={(e) => updatePageBackground(selectedPageId, e.target.value)}
+              className="h-10 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-xs text-stone-500">Үндсэн дэвсгэр өнгө</p>
+            <input
+              type="color"
+              value={appBackgroundColor}
+              onChange={(e) => setAppBackgroundColor(e.target.value)}
+              className="h-10 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
+            />
           </div>
           <div>
             <p className="mb-2 text-xs text-stone-500">Хээ</p>
@@ -481,26 +499,11 @@ export function EditorPanelBody({
         id="bookEffects"
         openId={openAccordion}
         setOpenId={setOpenAccordion}
-        icon={BookOpen}
-        label="Номын эффект"
+        icon={Palette}
+        label="Арын хөгжим"
       />
       {openAccordion === "bookEffects" && (
         <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs text-stone-500">Хуудасны нугаралт</p>
-            <span className="text-xs text-stone-400">
-              {bendIntensity.toFixed(1)}
-            </span>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="5"
-            step="0.1"
-            value={bendIntensity}
-            onChange={(e) => setBendIntensity(parseFloat(e.target.value))}
-            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-stone-200 accent-rose-500"
-          />
           <div>
             <p className="mb-2 text-xs text-stone-500">Арын хөгжим (YouTube линк)</p>
             <input

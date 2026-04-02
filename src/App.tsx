@@ -300,15 +300,17 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [showFinalizePrompt, setShowFinalizePrompt] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [appBackgroundColor, setAppBackgroundColor] = useState("#4A5568");
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState("");
   const [hasAudioGesture, setHasAudioGesture] = useState(false);
   const [isYtApiReady, setIsYtApiReady] = useState(false);
+  const [ytReadyTick, setYtReadyTick] = useState(0);
   const [audibleVideoIds, setAudibleVideoIds] = useState<string[]>([]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
-  const [bendIntensity, setBendIntensity] = useState(1.2);
+  const bendIntensity = 0;
 
   const [editorPlacement, setEditorPlacement] = useState(() => ({
     left: defaultEditorLeftPx(),
@@ -386,10 +388,15 @@ export default function App() {
       events: {
         onReady: (ev: any) => {
           ev.target.setVolume(50);
+          setYtReadyTick((n) => n + 1);
+          if (hasAudioGesture) {
+            ev.target.unMute?.();
+            void ev.target.playVideo?.();
+          }
         },
       },
     });
-  }, [isYtApiReady, ytVideoId]);
+  }, [hasAudioGesture, isYtApiReady, ytVideoId]);
 
   useEffect(() => {
     const p = ytPlayerRef.current;
@@ -402,8 +409,9 @@ export default function App() {
     const p = ytPlayerRef.current;
     if (!p) return;
     if (!hasAudioGesture || !ytVideoId) return;
+    p.unMute?.();
     p.playVideo?.();
-  }, [hasAudioGesture, ytVideoId]);
+  }, [hasAudioGesture, ytVideoId, ytReadyTick]);
 
   useEffect(() => {
     const onResize = () => {
@@ -587,6 +595,7 @@ export default function App() {
   void shareDeadlineTick;
 
   const showPublishLinkUi = !sharedViewMode && canPublishShareLinks();
+  const isPureViewOnly = sharedViewMode && !canEditSharedLink;
 
   const copyShareLink = async () => {
     if (!showPublishLinkUi) return;
@@ -678,7 +687,12 @@ export default function App() {
     }
   };
 
-  const addElement = (pageId: string, type: ElementType, content: string) => {
+  const addElement = (
+    pageId: string,
+    type: ElementType,
+    content: string,
+    opts?: { width?: number; height?: number },
+  ) => {
     const isPolaroidSticker =
       type === "sticker" && content === POLAROID_STICKER_TOKEN;
     const newElement: PageElement = {
@@ -689,8 +703,8 @@ export default function App() {
       rotation: Math.random() * 20 - 10,
       content,
       fontSize: type === "text" ? 32 : type === "sticker" ? 48 : undefined,
-      width: isPolaroidSticker ? 210 : undefined,
-      height: isPolaroidSticker ? 260 : undefined,
+      width: opts?.width ?? (isPolaroidSticker ? 210 : undefined),
+      height: opts?.height ?? (isPolaroidSticker ? 260 : undefined),
       color: "#333333",
       fontFamily: type === "text" ? "var(--font-handwriting)" : undefined,
       textEffect: type === "text" ? "none" : undefined,
@@ -724,6 +738,43 @@ export default function App() {
       video.onerror = () => {
         URL.revokeObjectURL(url);
         reject(new Error("Видеоны мэдээллийг уншиж чадсангүй."));
+      };
+      video.src = url;
+    });
+
+  const probeImageSize = (file: File) =>
+    new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({
+          width: img.naturalWidth || 1,
+          height: img.naturalHeight || 1,
+        });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Зургийн хэмжээг уншиж чадсангүй."));
+      };
+      img.src = url;
+    });
+
+  const probeVideoSize = (file: File) =>
+    new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const video = document.createElement("video");
+      const url = URL.createObjectURL(file);
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        resolve({
+          width: video.videoWidth || 1,
+          height: video.videoHeight || 1,
+        });
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Видеоны хэмжээг уншиж чадсангүй."));
       };
       video.src = url;
     });
@@ -798,6 +849,12 @@ export default function App() {
     if (currentShareId) {
       setShareHint("Зураг байршуулж байна...");
       void (async () => {
+        let mediaSize: { width: number; height: number } | null = null;
+        try {
+          mediaSize = await probeImageSize(file);
+        } catch {
+          mediaSize = null;
+        }
         const uploaded = await uploadImageFileForShare(currentShareId, file);
         if (uploaded.ok === false) {
           setShareHint(null);
@@ -810,7 +867,16 @@ export default function App() {
         if (typeof uploaded.bytesLimit === "number") {
           setShareStorageLimitBytes(uploaded.bytesLimit);
         }
-        addElement(pageId, "image", uploaded.url);
+        const targetWidth = 220;
+        const ratio =
+          mediaSize && mediaSize.height > 0
+            ? mediaSize.width / mediaSize.height
+            : 1;
+        const targetHeight = Math.max(60, Math.round(targetWidth / ratio));
+        addElement(pageId, "image", uploaded.url, {
+          width: targetWidth,
+          height: targetHeight,
+        });
         setShareHint("Зураг байршууллаа.");
         window.setTimeout(() => setShareHint(null), 1400);
       })();
@@ -856,6 +922,12 @@ export default function App() {
       return;
     }
 
+    let mediaSize: { width: number; height: number } | null = null;
+    try {
+      mediaSize = await probeVideoSize(file);
+    } catch {
+      mediaSize = null;
+    }
     setShareHint("Видео байршуулж байна...");
     const uploaded = await uploadImageFileForShare(currentShareId, file);
     if (uploaded.ok === false) {
@@ -870,7 +942,14 @@ export default function App() {
     if (typeof uploaded.bytesLimit === "number") {
       setShareStorageLimitBytes(uploaded.bytesLimit);
     }
-    addElement(pageId, "video", uploaded.url);
+    const targetWidth = 320;
+    const ratio =
+      mediaSize && mediaSize.height > 0 ? mediaSize.width / mediaSize.height : 16 / 9;
+    const targetHeight = Math.max(80, Math.round(targetWidth / ratio));
+    addElement(pageId, "video", uploaded.url, {
+      width: targetWidth,
+      height: targetHeight,
+    });
     setShareHint("Видео байршууллаа.");
     window.setTimeout(() => setShareHint(null), 1400);
     e.target.value = "";
@@ -905,10 +984,13 @@ export default function App() {
   }
 
   return (
-    <div className="h-dvh bg-[#4A5568] font-sans flex flex-col overflow-hidden">
+    <div
+      className="h-dvh font-sans flex flex-col overflow-hidden"
+      style={{ backgroundColor: appBackgroundColor }}
+    >
       {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
       <div className="flex-1 relative min-h-0">
-        {sharedViewMode && (
+        {sharedViewMode && !isPureViewOnly && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 mx-2 max-w-lg text-center text-xs sm:text-sm text-white bg-white/15 rounded-xl py-2 px-3 sm:px-4 border border-white/25 shadow-lg">
             {!canEditSharedLink ? (
               <p className="mb-2 text-white/95">
@@ -1049,7 +1131,8 @@ export default function App() {
         </main>
 
         {/* Bottom Floating Controls */}
-        <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50 max-w-[95vw]">
+        {!isPureViewOnly && (
+          <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50 max-w-[95vw]">
           {sharedViewMode && (
             <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
               Үлдсэн зай: {storageLeftMb.toFixed(2)} MB
@@ -1185,7 +1268,8 @@ export default function App() {
               </button>
             )}
           </div>
-        </div>
+          </div>
+        )}
 
         {/* Editor panel: draggable + accordion */}
         {isEditing && (!sharedViewMode || canEditSharedLink) && (
@@ -1210,8 +1294,8 @@ export default function App() {
                 pages={pages}
                 openAccordion={openAccordion}
                 setOpenAccordion={setOpenAccordion}
-                bendIntensity={bendIntensity}
-                setBendIntensity={setBendIntensity}
+                appBackgroundColor={appBackgroundColor}
+                setAppBackgroundColor={setAppBackgroundColor}
                 backgroundMusicUrl={backgroundMusicUrl}
                 setBackgroundMusicUrl={setBackgroundMusicUrl}
                 addElement={addElement}
@@ -1583,10 +1667,12 @@ function PageContent({
   onSelectPage: () => void;
 }) {
   if (!page) return <div className="w-full h-full bg-stone-200" />;
+  const useClassBackground = page.background.startsWith("bg-");
 
   return (
     <div
-      className={`w-full h-full relative ${page.background} ${page.pattern} transition-all ${isActive && isEditing ? "ring-inset ring-4 ring-rose-400" : ""}`}
+      className={`w-full h-full relative ${useClassBackground ? page.background : ""} ${page.pattern} transition-all ${isActive && isEditing ? "ring-inset ring-4 ring-rose-400" : ""}`}
+      style={useClassBackground ? undefined : { backgroundColor: page.background }}
       onClick={(e) => {
         if (isEditing) {
           onSelectPage();
@@ -1662,14 +1748,26 @@ function DraggableElement({
     const ow = baseWidth;
     const oh = baseHeight;
     const minSize = 40;
+    const isCornerHandle = dir.length === 2;
+    const minScale = minSize / Math.max(ow, oh);
 
-    const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - sx) * inv;
-      const dy = (ev.clientY - sy) * inv;
+    const calc = (dx: number, dy: number) => {
       let nx = ox;
       let ny = oy;
       let nw = ow;
       let nh = oh;
+
+      if (isCornerHandle) {
+        const sx = dir.includes("e") ? dx : -dx;
+        const sy = dir.includes("s") ? dy : -dy;
+        const dominant = Math.abs(sx / ow) > Math.abs(sy / oh) ? sx / ow : sy / oh;
+        const scale = Math.max(minScale, 1 + dominant);
+        nw = Math.max(minSize, ow * scale);
+        nh = Math.max(minSize, oh * scale);
+        if (dir.includes("w")) nx = ox + (ow - nw);
+        if (dir.includes("n")) ny = oy + (oh - nh);
+        return { nx, ny, nw, nh };
+      }
 
       if (dir.includes("e")) nw = Math.max(minSize, ow + dx);
       if (dir.includes("s")) nh = Math.max(minSize, oh + dy);
@@ -1681,27 +1779,20 @@ function DraggableElement({
         nh = Math.max(minSize, oh - dy);
         ny = oy + (oh - nh);
       }
+      return { nx, ny, nw, nh };
+    };
 
+    const move = (ev: PointerEvent) => {
+      const dx = (ev.clientX - sx) * inv;
+      const dy = (ev.clientY - sy) * inv;
+      const { nx, ny, nw, nh } = calc(dx, dy);
       onUpdate({ ...element, x: nx, y: ny, width: nw, height: nh }, false);
     };
 
     const up = (ev: PointerEvent) => {
       const dx = (ev.clientX - sx) * inv;
       const dy = (ev.clientY - sy) * inv;
-      let nx = ox;
-      let ny = oy;
-      let nw = ow;
-      let nh = oh;
-      if (dir.includes("e")) nw = Math.max(minSize, ow + dx);
-      if (dir.includes("s")) nh = Math.max(minSize, oh + dy);
-      if (dir.includes("w")) {
-        nw = Math.max(minSize, ow - dx);
-        nx = ox + (ow - nw);
-      }
-      if (dir.includes("n")) {
-        nh = Math.max(minSize, oh - dy);
-        ny = oy + (oh - nh);
-      }
+      const { nx, ny, nw, nh } = calc(dx, dy);
       onUpdate({ ...element, x: nx, y: ny, width: nw, height: nh }, true);
       setIsTransforming(false);
       window.removeEventListener("pointermove", move);
@@ -1899,9 +1990,12 @@ function DraggableElement({
           onClick={(e) => {
             e.stopPropagation();
             if (isEditing) onSelect();
-            setVideoMuted((m) => !m);
             const el = videoRef.current;
-            if (el) void el.play().catch(() => {});
+            if (!el) return;
+            const nextMuted = !videoMuted;
+            el.muted = nextMuted;
+            setVideoMuted(nextMuted);
+            void el.play().catch(() => {});
           }}
         />
       )}
@@ -1917,11 +2011,9 @@ function DraggableElement({
           {canResize && (
             <>
               <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "nw")} className={`${resizeHandleClass} -left-1.5 -top-1.5 cursor-nwse-resize`} />
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "n")} className={`${resizeHandleClass} left-1/2 -top-1.5 -translate-x-1/2 cursor-ns-resize`} />
               <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "ne")} className={`${resizeHandleClass} -right-1.5 -top-1.5 cursor-nesw-resize`} />
               <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "e")} className={`${resizeHandleClass} -right-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize`} />
               <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "se")} className={`${resizeHandleClass} -bottom-1.5 -right-1.5 cursor-nwse-resize`} />
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "s")} className={`${resizeHandleClass} -bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize`} />
               <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "sw")} className={`${resizeHandleClass} -bottom-1.5 -left-1.5 cursor-nesw-resize`} />
               <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "w")} className={`${resizeHandleClass} -left-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize`} />
             </>
