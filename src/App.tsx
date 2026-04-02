@@ -1935,12 +1935,19 @@ function DraggableElement({
 
   useEffect(() => {
     if (element.type !== "video") return;
-    const audible = !videoMuted;
+    // Video should count as "audible" only while its page is actually visible.
+    const audible = !videoMuted && isVideoVisible && !document.hidden;
     if (lastReportedAudibleRef.current !== audible) {
       onVideoAudibleChange(element.id, audible);
       lastReportedAudibleRef.current = audible;
     }
-  }, [element.type, element.id, onVideoAudibleChange, videoMuted]);
+  }, [
+    element.type,
+    element.id,
+    isVideoVisible,
+    onVideoAudibleChange,
+    videoMuted,
+  ]);
 
   useEffect(
     () => () => {
