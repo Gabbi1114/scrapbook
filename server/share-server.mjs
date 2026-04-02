@@ -289,6 +289,49 @@ app.post("/api/share", async (req, res) => {
   }
 });
 
+app.post("/api/share/:id/ensure", async (req, res) => {
+  try {
+    const requiredSecret = process.env.SHARE_CREATE_SECRET;
+    if (requiredSecret) {
+      const sent = req.get("x-scrapbook-create-secret");
+      if (sent !== requiredSecret) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+    const id = path.basename(String(req.params.id || ""));
+    if (!id) {
+      return res.status(400).json({ error: "invalid id" });
+    }
+    const existing = await loadShareOrNull(id);
+    if (existing) {
+      return res.json({ ok: true, existed: true });
+    }
+    const { v, pages, musicUrl } = req.body;
+    if (v !== 1 || !Array.isArray(pages) || pages.length === 0) {
+      return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
+    }
+    const jsonBytes = pagesJsonBytes(pages);
+    if (jsonBytes > MAX_SHARE_BYTES) {
+      return res.status(413).json({
+        error: "Share is too large. Limit is 15MB per link.",
+      });
+    }
+    const payload = {
+      v: 1,
+      pages,
+      mediaBytes: 0,
+      ...(typeof musicUrl === "string" && musicUrl.trim()
+        ? { musicUrl: musicUrl.trim() }
+        : {}),
+    };
+    await persistShare(id, payload);
+    res.json({ ok: true, existed: false });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 app.get("/api/share/:id", async (req, res) => {
   const record = await loadShareOrNull(req.params.id);
   if (!record) {

@@ -279,6 +279,43 @@ export async function uploadPagesForShare(
   }
 }
 
+/** Ensure a fixed-id share exists (create once, then reuse). */
+export async function ensureSharedPagesById(
+  id: string,
+  pages: PageData[],
+  musicUrl?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const base = shareApiBase();
+  const url = `${base}/api/share/${encodeURIComponent(id)}/ensure`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const createSecret = import.meta.env.VITE_SHARE_CREATE_SECRET as
+    | string
+    | undefined;
+  if (createSecret && createSecret.length > 0) {
+    headers["X-Scrapbook-Create-Secret"] = createSecret;
+  }
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        v: 1,
+        pages,
+        ...(musicUrl && musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}),
+      } as PayloadV1),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      return { ok: false, error: t || r.statusText };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 export async function fetchSharedBundleById(
   id: string,
 ): Promise<SharedScrapbookBundle | null> {

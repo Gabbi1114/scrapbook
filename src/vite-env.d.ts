@@ -18,6 +18,10 @@ interface ImportMetaEnv {
   readonly VITE_GIPHY_API_KEY?: string;
   /** Optional Tenor API key for GIF search fallback. */
   readonly VITE_TENOR_API_KEY?: string;
+  /** Optional password lock for the main (non-share) editor site. */
+  readonly VITE_STUDIO_PASSWORD?: string;
+  /** Optional fixed server id for main studio website data. */
+  readonly VITE_STUDIO_ROOT_SHARE_ID?: string;
 }
 
 interface ImportMeta {

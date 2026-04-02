@@ -30,6 +30,7 @@ import {
   parsePagesFromHash,
   saveDraftToStorage,
   fetchSharedBundleById,
+  ensureSharedPagesById,
   saveSharedPagesById,
   uploadImageFileForShare,
   SHARE_STORAGE_LIMIT_BYTES,
@@ -273,12 +274,26 @@ function toFriendlyFinalizeError(rawError: string): string {
   return "Засварыг дуусгах үед алдаа гарлаа. Дахин оролдоно уу.";
 }
 
+const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
+
 export default function App() {
   const init = getInitialPagesAndShare();
   const initialShareId =
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("share")
       : null;
+  const studioRootShareId =
+    (import.meta.env.VITE_STUDIO_ROOT_SHARE_ID || "studio-root").trim();
+  const studioPassword = (import.meta.env.VITE_STUDIO_PASSWORD || "").trim();
+  const [studioPasswordInput, setStudioPasswordInput] = useState("");
+  const [studioAuthError, setStudioAuthError] = useState<string | null>(null);
+  const [studioUnlocked, setStudioUnlocked] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const isShareLink = new URLSearchParams(window.location.search).has("share");
+    if (isShareLink) return true;
+    if (!studioPassword) return true;
+    return window.sessionStorage.getItem(STUDIO_UNLOCK_KEY) === "1";
+  });
   const [pages, setPages] = useState<PageData[]>(init.pages);
   const [sharedViewMode, setSharedViewMode] = useState(
     init.openedFromShareLink,
@@ -288,6 +303,7 @@ export default function App() {
   );
   const [history, setHistory] = useState<PageData[][]>([init.pages]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const initialPagesRef = useRef(init.pages);
   const [shareHint, setShareHint] = useState<string | null>(null);
   const [shareStorageUsedBytes, setShareStorageUsedBytes] = useState(0);
   const [shareStorageLimitBytes, setShareStorageLimitBytes] = useState(
@@ -571,26 +587,47 @@ export default function App() {
   }, [sharedViewMode, currentShareId, shareEditUntilIso]);
 
   useEffect(() => {
-    if (sharedViewMode && currentShareId) return;
+    if (currentShareId) return;
     const id = window.setTimeout(() => saveDraftToStorage(pages), 500);
     return () => window.clearTimeout(id);
-  }, [pages, sharedViewMode, currentShareId]);
+  }, [pages, currentShareId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get("share");
-    if (!sid) return;
     let cancelled = false;
     (async () => {
-      const bundle = await fetchSharedBundleById(sid);
+      if (sid) {
+        const bundle = await fetchSharedBundleById(sid);
+        if (cancelled) return;
+        if (bundle) {
+          setCurrentShareId(sid);
+          setPages(bundle.pages);
+          setBackgroundMusicUrl(bundle.musicUrl || "");
+          setShareEditUntilIso(bundle.editUntil);
+          setShareStorageUsedBytes(bundle.mediaBytes);
+          setSharedViewMode(true);
+          setHistory([bundle.pages]);
+          setHistoryIndex(0);
+        }
+        return;
+      }
+      if (!canPublishShareLinks()) return;
+      if (!studioRootShareId) return;
+      const ensured = await ensureSharedPagesById(
+        studioRootShareId,
+        initialPagesRef.current,
+      );
+      if (cancelled || !ensured.ok) return;
+      const bundle = await fetchSharedBundleById(studioRootShareId);
       if (cancelled) return;
       if (bundle) {
-        setCurrentShareId(sid);
+        setCurrentShareId(studioRootShareId);
         setPages(bundle.pages);
         setBackgroundMusicUrl(bundle.musicUrl || "");
         setShareEditUntilIso(bundle.editUntil);
         setShareStorageUsedBytes(bundle.mediaBytes);
-        setSharedViewMode(true);
+        setSharedViewMode(false);
         setHistory([bundle.pages]);
         setHistoryIndex(0);
       }
@@ -598,7 +635,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [studioRootShareId]);
 
   useEffect(() => {
     if (!shareEditUntilIso || !sharedViewMode) return;
@@ -617,10 +654,14 @@ export default function App() {
     Number.isFinite(shareEditDeadlineMs) &&
     Date.now() > shareEditDeadlineMs;
   const canEditSharedLink = sharedViewMode && !isShareEditExpired;
+  const canSaveToServer =
+    Boolean(currentShareId) && (!sharedViewMode || canEditSharedLink);
   void shareDeadlineTick;
 
   const showPublishLinkUi = !sharedViewMode && canPublishShareLinks();
   const isPureViewOnly = sharedViewMode && !canEditSharedLink;
+  const shouldLockStudio =
+    !sharedViewMode && studioPassword.length > 0 && !studioUnlocked;
 
   const copyShareLink = async () => {
     if (!showPublishLinkUi) return;
@@ -659,7 +700,8 @@ export default function App() {
   };
 
   const saveMusicLinkNow = async () => {
-    if (!currentShareId || !canEditSharedLink) return;
+    if (!currentShareId) return;
+    if (sharedViewMode && !canEditSharedLink) return;
     const r = await saveSharedPagesById(
       currentShareId,
       pages,
@@ -673,8 +715,25 @@ export default function App() {
     window.setTimeout(() => setShareHint(null), 1400);
   };
 
+  const unlockStudio = () => {
+    if (!studioPassword) {
+      setStudioUnlocked(true);
+      return;
+    }
+    if (studioPasswordInput === studioPassword) {
+      setStudioUnlocked(true);
+      setStudioAuthError(null);
+      setStudioPasswordInput("");
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(STUDIO_UNLOCK_KEY, "1");
+      }
+      return;
+    }
+    setStudioAuthError("Нууц үг буруу байна.");
+  };
+
   useEffect(() => {
-    if (!canEditSharedLink || !currentShareId) return;
+    if (!canSaveToServer || !currentShareId) return;
     const id = window.setTimeout(async () => {
       const r = await saveSharedPagesById(
         currentShareId,
@@ -691,7 +750,7 @@ export default function App() {
       window.setTimeout(() => setShareHint(null), 1200);
     }, 700);
     return () => window.clearTimeout(id);
-  }, [backgroundMusicUrl, canEditSharedLink, currentShareId, pages]);
+  }, [backgroundMusicUrl, canSaveToServer, currentShareId, pages, sharedViewMode]);
 
   const turnNext = () => {
     if (currentLeaf < totalLeaves) {
@@ -1074,6 +1133,42 @@ export default function App() {
       front: pages[i * 2],
       back: pages[i * 2 + 1],
     });
+  }
+
+  if (shouldLockStudio) {
+    return (
+      <div
+        className="h-dvh font-sans flex items-center justify-center px-4"
+        style={{ backgroundColor: "#1f2937" }}
+      >
+        <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+          <h1 className="text-lg font-semibold text-stone-900">Нууц үг оруулна уу</h1>
+          <p className="mt-1 text-sm text-stone-600">
+            Үндсэн scrapbook редакторт нэвтрэхийн тулд нууц үгээ оруулна уу.
+          </p>
+          <input
+            type="password"
+            value={studioPasswordInput}
+            onChange={(e) => setStudioPasswordInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") unlockStudio();
+            }}
+            placeholder="Password"
+            className="mt-4 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+          />
+          {studioAuthError && (
+            <p className="mt-2 text-xs text-rose-600">{studioAuthError}</p>
+          )}
+          <button
+            type="button"
+            onClick={unlockStudio}
+            className="mt-4 w-full rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
+          >
+            Нэвтрэх
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
