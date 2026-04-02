@@ -2076,6 +2076,8 @@ function DraggableElement({
             const nextMuted = !videoMuted;
             el.muted = nextMuted;
             setVideoMuted(nextMuted);
+            // Apply ducking immediately on user click (don't wait for effect tick).
+            onVideoAudibleChange(element.id, !nextMuted);
             void el.play().catch(() => {});
           }}
         />
