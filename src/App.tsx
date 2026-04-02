@@ -306,6 +306,9 @@ export default function App() {
   const [isYtApiReady, setIsYtApiReady] = useState(false);
   const [ytReadyTick, setYtReadyTick] = useState(0);
   const [audibleVideoIds, setAudibleVideoIds] = useState<string[]>([]);
+  const [videoMutedById, setVideoMutedById] = useState<Record<string, boolean>>(
+    {},
+  );
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
@@ -329,11 +332,31 @@ export default function App() {
     editorPlacementRef.current = editorPlacement;
   }, [editorPlacement]);
 
+  const tryStartBackgroundMusic = useCallback(() => {
+    const p = ytPlayerRef.current;
+    if (!p) return;
+    p.unMute?.();
+    p.setVolume?.(audibleVideoIds.length > 0 ? 20 : 50);
+    p.playVideo?.();
+  }, [audibleVideoIds.length]);
+
   useEffect(() => {
-    const onFirstInteract = () => setHasAudioGesture(true);
+    const onFirstInteract = () => {
+      setHasAudioGesture(true);
+      tryStartBackgroundMusic();
+    };
     window.addEventListener("pointerdown", onFirstInteract, { once: true });
-    return () => window.removeEventListener("pointerdown", onFirstInteract);
-  }, []);
+    window.addEventListener("click", onFirstInteract, { once: true });
+    window.addEventListener("touchstart", onFirstInteract, {
+      once: true,
+      passive: true,
+    });
+    return () => {
+      window.removeEventListener("pointerdown", onFirstInteract);
+      window.removeEventListener("click", onFirstInteract);
+      window.removeEventListener("touchstart", onFirstInteract);
+    };
+  }, [tryStartBackgroundMusic]);
 
   useEffect(() => {
     if (window.YT?.Player) {
@@ -390,13 +413,12 @@ export default function App() {
           ev.target.setVolume(50);
           setYtReadyTick((n) => n + 1);
           if (hasAudioGesture) {
-            ev.target.unMute?.();
-            void ev.target.playVideo?.();
+            tryStartBackgroundMusic();
           }
         },
       },
     });
-  }, [hasAudioGesture, isYtApiReady, ytVideoId]);
+  }, [hasAudioGesture, isYtApiReady, tryStartBackgroundMusic, ytVideoId]);
 
   useEffect(() => {
     const p = ytPlayerRef.current;
@@ -406,12 +428,9 @@ export default function App() {
   }, [audibleVideoIds]);
 
   useEffect(() => {
-    const p = ytPlayerRef.current;
-    if (!p) return;
     if (!hasAudioGesture || !ytVideoId) return;
-    p.unMute?.();
-    p.playVideo?.();
-  }, [hasAudioGesture, ytVideoId, ytReadyTick]);
+    tryStartBackgroundMusic();
+  }, [hasAudioGesture, tryStartBackgroundMusic, ytReadyTick, ytVideoId]);
 
   useEffect(() => {
     const onResize = () => {
@@ -840,6 +859,11 @@ export default function App() {
     });
   };
 
+  const isVideoMuted = (id: string) => videoMutedById[id] ?? true;
+  const setVideoMuted = (id: string, muted: boolean) => {
+    setVideoMutedById((prev) => ({ ...prev, [id]: muted }));
+  };
+
   const handleImageUpload = (
     pageId: string,
     e: React.ChangeEvent<HTMLInputElement>,
@@ -1091,6 +1115,8 @@ export default function App() {
                         setSelectedElementId={setSelectedElementId}
                         updateElement={updateElement}
                         onVideoAudibleChange={setVideoAudible}
+                        isVideoMuted={isVideoMuted}
+                        setVideoMuted={setVideoMuted}
                         selectedPageId={selectedPageId}
                         setSelectedPageId={setSelectedPageId}
                       />
@@ -1107,6 +1133,8 @@ export default function App() {
                           setSelectedElementId={setSelectedElementId}
                           updateElement={updateElement}
                           onVideoAudibleChange={setVideoAudible}
+                          isVideoMuted={isVideoMuted}
+                          setVideoMuted={setVideoMuted}
                           selectedPageId={selectedPageId}
                           setSelectedPageId={setSelectedPageId}
                           bendIntensity={bendIntensity}
@@ -1381,6 +1409,8 @@ function EditingSpread({
   setSelectedElementId,
   updateElement,
   onVideoAudibleChange,
+  isVideoMuted,
+  setVideoMuted,
   selectedPageId,
   setSelectedPageId,
 }: {
@@ -1391,6 +1421,8 @@ function EditingSpread({
   setSelectedElementId: (id: string | null) => void;
   updateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
   onVideoAudibleChange: (id: string, audible: boolean) => void;
+  isVideoMuted: (id: string) => boolean;
+  setVideoMuted: (id: string, muted: boolean) => void;
   selectedPageId: string | null;
   setSelectedPageId: (id: string | null) => void;
 }) {
@@ -1421,6 +1453,8 @@ function EditingSpread({
               onSelectElement={setSelectedElementId}
               onUpdateElement={updateElement}
               onVideoAudibleChange={onVideoAudibleChange}
+              isVideoMuted={isVideoMuted}
+              setVideoMuted={setVideoMuted}
               isActive={selectedPageId === left.id}
               onSelectPage={() => setSelectedPageId(left.id)}
             />
@@ -1435,6 +1469,8 @@ function EditingSpread({
               onSelectElement={setSelectedElementId}
               onUpdateElement={updateElement}
               onVideoAudibleChange={onVideoAudibleChange}
+              isVideoMuted={isVideoMuted}
+              setVideoMuted={setVideoMuted}
               isActive={selectedPageId === right.id}
               onSelectPage={() => setSelectedPageId(right.id)}
             />
@@ -1452,6 +1488,8 @@ function EditingSpread({
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
             onVideoAudibleChange={onVideoAudibleChange}
+            isVideoMuted={isVideoMuted}
+            setVideoMuted={setVideoMuted}
             isActive={selectedPageId === left.id}
             onSelectPage={() => setSelectedPageId(left.id)}
           />
@@ -1468,6 +1506,8 @@ function EditingSpread({
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
             onVideoAudibleChange={onVideoAudibleChange}
+            isVideoMuted={isVideoMuted}
+            setVideoMuted={setVideoMuted}
             isActive={selectedPageId === right.id}
             onSelectPage={() => setSelectedPageId(right.id)}
           />
@@ -1486,6 +1526,9 @@ function FlipPage({
   selectedElementId,
   setSelectedElementId,
   updateElement,
+  onVideoAudibleChange,
+  isVideoMuted,
+  setVideoMuted,
   selectedPageId,
   setSelectedPageId,
   bendIntensity = 1.2,
@@ -1596,6 +1639,9 @@ function FlipPage({
             selectedElementId={selectedElementId}
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
+            onVideoAudibleChange={onVideoAudibleChange}
+            isVideoMuted={isVideoMuted}
+            setVideoMuted={setVideoMuted}
             isActive={selectedPageId === leaf.front?.id}
             onSelectPage={() => isEditing && setSelectedPageId(leaf.front?.id)}
           />
@@ -1625,6 +1671,9 @@ function FlipPage({
             selectedElementId={selectedElementId}
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
+            onVideoAudibleChange={onVideoAudibleChange}
+            isVideoMuted={isVideoMuted}
+            setVideoMuted={setVideoMuted}
             isActive={selectedPageId === leaf.back?.id}
             onSelectPage={() => isEditing && setSelectedPageId(leaf.back?.id)}
           />
@@ -1654,6 +1703,8 @@ function PageContent({
   onSelectElement,
   onUpdateElement,
   onVideoAudibleChange,
+  isVideoMuted,
+  setVideoMuted,
   isActive,
   onSelectPage,
 }: {
@@ -1663,6 +1714,8 @@ function PageContent({
   onSelectElement: (id: string | null) => void;
   onUpdateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
   onVideoAudibleChange?: (id: string, audible: boolean) => void;
+  isVideoMuted: (id: string) => boolean;
+  setVideoMuted: (id: string, muted: boolean) => void;
   isActive: boolean;
   onSelectPage: () => void;
 }) {
@@ -1694,6 +1747,8 @@ function PageContent({
             onUpdateElement(page.id, newEl, saveHistory)
           }
           onVideoAudibleChange={onVideoAudibleChange ?? (() => {})}
+          videoMuted={isVideoMuted(el.id)}
+          setVideoMuted={(muted) => setVideoMuted(el.id, muted)}
         />
       ))}
     </div>
@@ -1707,6 +1762,8 @@ function DraggableElement({
   onSelect,
   onUpdate,
   onVideoAudibleChange,
+  videoMuted,
+  setVideoMuted,
 }: {
   key?: React.Key;
   element: PageElement;
@@ -1715,13 +1772,14 @@ function DraggableElement({
   onSelect: () => void;
   onUpdate: (el: PageElement, saveHistory?: boolean) => void;
   onVideoAudibleChange: (id: string, audible: boolean) => void;
+  videoMuted: boolean;
+  setVideoMuted: (muted: boolean) => void;
 }) {
   const stageScale = useBookStageScale();
   const inv = stageScale > 0 ? 1 / stageScale : 1;
   const dragControls = useDragControls();
   const [isTransforming, setIsTransforming] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [videoMuted, setVideoMuted] = useState(true);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
   const isPolaroid = element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
   const lastReportedAudibleRef = useRef(false);
