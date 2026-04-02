@@ -886,6 +886,11 @@ export default function App() {
     setVideoMutedById((prev) => ({ ...prev, [id]: muted }));
   };
 
+  // On every page turn, force videos back to muted state.
+  useEffect(() => {
+    setVideoMutedById({});
+  }, [currentLeaf]);
+
   const handleImageUpload = (
     pageId: string,
     e: React.ChangeEvent<HTMLInputElement>,
