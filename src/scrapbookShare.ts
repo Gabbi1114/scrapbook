@@ -303,6 +303,28 @@ export async function saveSharedPagesById(
   }
 }
 
+/** Permanently close editing for this shared link right now. */
+export async function finalizeSharedEditingById(
+  id: string,
+): Promise<{ ok: true; editUntil: string } | { ok: false; error: string }> {
+  const base = shareApiBase();
+  const url = `${base}/api/share/${encodeURIComponent(id)}/finalize`;
+  try {
+    const r = await fetch(url, { method: "POST" });
+    if (!r.ok) {
+      const t = await r.text();
+      return { ok: false, error: t || r.statusText };
+    }
+    const body = (await r.json()) as { ok?: boolean; editUntil?: string };
+    if (!body.ok || typeof body.editUntil !== "string") {
+      return { ok: false, error: "Invalid finalize response" };
+    }
+    return { ok: true, editUntil: body.editUntil };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 type UploadMediaResponse = {
   objectUrl: string;
   bytesUsed?: number;

@@ -334,6 +334,31 @@ app.put("/api/share/:id", async (req, res) => {
   }
 });
 
+app.post("/api/share/:id/finalize", async (req, res) => {
+  try {
+    const record = await loadShareOrNull(req.params.id);
+    if (!record) {
+      return res.status(404).json({ error: "not found" });
+    }
+    const prev = record.data || {};
+    const currentEditUntil =
+      typeof prev.editUntil === "string" ? prev.editUntil : null;
+    if (currentEditUntil && Date.now() > Date.parse(currentEditUntil)) {
+      return res.json({ ok: true, editUntil: currentEditUntil });
+    }
+    const editUntil = new Date().toISOString();
+    const payload = {
+      ...prev,
+      editUntil,
+    };
+    await persistShare(req.params.id, payload);
+    res.json({ ok: true, editUntil });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 app.post("/api/share/:id/upload-media", upload.single("file"), async (req, res) => {
   try {
     if (!r2) {

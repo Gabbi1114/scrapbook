@@ -35,6 +35,7 @@ import {
   SHARE_STORAGE_LIMIT_BYTES,
   resolveShareableUrl,
   canPublishShareLinks,
+  finalizeSharedEditingById,
 } from "./scrapbookShare";
 import {
   BookStageScaleContext,
@@ -46,6 +47,13 @@ import {
   EditorPanelBody,
   type EditorAccordionId,
 } from "./EditorPanelBody";
+
+declare global {
+  interface Window {
+    YT?: any;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
 
 const defaultPages: PageData[] = [
   {
@@ -142,7 +150,7 @@ const defaultPages: PageData[] = [
         x: 120,
         y: 250,
         rotation: 0,
-        content: "The End",
+        content: "Төгсөв",
         fontSize: 32,
         color: "#e11d48",
         fontFamily: "var(--font-handwriting)",
@@ -191,6 +199,77 @@ function defaultEditorLeftPx(): number {
   return Math.max(8, vw - pw - 12);
 }
 
+function parseYouTubeVideoId(url: string): string | null {
+  const raw = url.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.replace("/", "").trim();
+      return id || null;
+    }
+    if (u.hostname.includes("youtube.com")) {
+      const v = u.searchParams.get("v");
+      if (v) return v;
+      const parts = u.pathname.split("/").filter(Boolean);
+      const embedIdx = parts.indexOf("embed");
+      if (embedIdx >= 0 && parts[embedIdx + 1]) return parts[embedIdx + 1];
+      const shortsIdx = parts.indexOf("shorts");
+      if (shortsIdx >= 0 && parts[shortsIdx + 1]) return parts[shortsIdx + 1];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function toFriendlyUploadError(
+  rawError: string,
+  kind: "image" | "video",
+): string {
+  const t = (rawError || "").toLowerCase();
+
+  if (t.includes("1 minute")) {
+    return "Энэ видео 1 минутаас урт байна. Богино видео сонгоно уу.";
+  }
+  if (
+    t.includes("storage limit") ||
+    t.includes("15mb") ||
+    t.includes("too large")
+  ) {
+    return "Файл хэт том эсвэл энэ линкийн багтаамж дүүрсэн байна. Жижиг хэмжээтэй зураг/видео сонгоно уу.";
+  }
+  if (t.includes("only image/video")) {
+    return kind === "image"
+      ? "Энэ төрлийн зураг дэмжигдэхгүй байна. JPG, PNG, WebP эсвэл GIF файл сонгоно уу."
+      : "Энэ төрлийн видео дэмжигдэхгүй байна. MP4, WebM эсвэл MOV файл сонгоно уу.";
+  }
+  if (t.includes("edit window expired")) {
+    return "Энэ линкний засварлах хугацаа дууссан тул шинэ файл нэмэх боломжгүй.";
+  }
+  if (t.includes("share not found") || t.includes("not found")) {
+    return "Линк олдсонгүй. Линк зөв эсэхийг шалгаад дахин оролдоно уу.";
+  }
+  if (t.includes("file is required")) {
+    return "Файл сонгогдоогүй байна. Дахин сонгоод оролдоно уу.";
+  }
+  if (t.includes("r2 not configured") || t.includes("service unavailable")) {
+    return "Одоогоор файл байршуулах боломжгүй байна. Түр хүлээгээд дахин оролдоно уу.";
+  }
+
+  return kind === "image"
+    ? "Энэ зургийг оруулах боломжгүй байна. Өөр зураг сонгоод дахин оролдоно уу."
+    : "Энэ видеог оруулах боломжгүй байна. Өөр видео сонгоод дахин оролдоно уу.";
+}
+
+function toFriendlyFinalizeError(rawError: string): string {
+  const t = (rawError || "").toLowerCase();
+  if (t.includes("not found")) {
+    return "Линк олдсонгүй. Хуудсаа сэргээж дахин оролдоно уу.";
+  }
+  return "Засварыг дуусгах үед алдаа гарлаа. Дахин оролдоно уу.";
+}
+
 export default function App() {
   const init = getInitialPagesAndShare();
   const initialShareId =
@@ -219,6 +298,12 @@ export default function App() {
 
   const [currentLeaf, setCurrentLeaf] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
+  const [showFinalizePrompt, setShowFinalizePrompt] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [backgroundMusicUrl, setBackgroundMusicUrl] = useState("");
+  const [hasAudioGesture, setHasAudioGesture] = useState(false);
+  const [isYtApiReady, setIsYtApiReady] = useState(false);
+  const [audibleVideoIds, setAudibleVideoIds] = useState<string[]>([]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   );
@@ -235,10 +320,90 @@ export default function App() {
   const editorPanelRef = useRef<HTMLDivElement>(null);
   const editorPlacementRef = useRef(editorPlacement);
   const prevSelectedElementId = useRef<string | null>(null);
+  const ytPlayerRef = useRef<any>(null);
+  const ytHostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     editorPlacementRef.current = editorPlacement;
   }, [editorPlacement]);
+
+  useEffect(() => {
+    const onFirstInteract = () => setHasAudioGesture(true);
+    window.addEventListener("pointerdown", onFirstInteract, { once: true });
+    return () => window.removeEventListener("pointerdown", onFirstInteract);
+  }, []);
+
+  useEffect(() => {
+    if (window.YT?.Player) {
+      setIsYtApiReady(true);
+      return;
+    }
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[src="https://www.youtube.com/iframe_api"]',
+    );
+    const onReady = () => setIsYtApiReady(true);
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      onReady();
+    };
+    if (!existing) {
+      const s = document.createElement("script");
+      s.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(s);
+    }
+  }, []);
+
+  const ytVideoId = parseYouTubeVideoId(backgroundMusicUrl);
+
+  useEffect(() => {
+    if (!isYtApiReady) return;
+    if (!ytHostRef.current) return;
+    if (!ytVideoId) {
+      ytPlayerRef.current?.destroy?.();
+      ytPlayerRef.current = null;
+      return;
+    }
+
+    if (ytPlayerRef.current) {
+      ytPlayerRef.current.loadVideoById?.(ytVideoId);
+      return;
+    }
+
+    ytPlayerRef.current = new window.YT.Player(ytHostRef.current, {
+      width: "1",
+      height: "1",
+      videoId: ytVideoId,
+      playerVars: {
+        autoplay: 0,
+        controls: 0,
+        rel: 0,
+        modestbranding: 1,
+        playsinline: 1,
+        loop: 1,
+        playlist: ytVideoId,
+      },
+      events: {
+        onReady: (ev: any) => {
+          ev.target.setVolume(50);
+        },
+      },
+    });
+  }, [isYtApiReady, ytVideoId]);
+
+  useEffect(() => {
+    const p = ytPlayerRef.current;
+    if (!p) return;
+    const target = audibleVideoIds.length > 0 ? 20 : 50;
+    p.setVolume?.(target);
+  }, [audibleVideoIds]);
+
+  useEffect(() => {
+    const p = ytPlayerRef.current;
+    if (!p) return;
+    if (!hasAudioGesture || !ytVideoId) return;
+    p.playVideo?.();
+  }, [hasAudioGesture, ytVideoId]);
 
   useEffect(() => {
     const onResize = () => {
@@ -430,17 +595,33 @@ export default function App() {
       try {
         await navigator.clipboard.writeText(resolved.url);
         setShareHint(
-          "Link copied — paste it in a message or email to send your scrapbook.",
+          "Линк хууллаа — мессеж эсвэл и-мэйлээр явуулаарай.",
         );
         window.setTimeout(() => setShareHint(null), 5000);
       } catch {
-        window.prompt("Copy this link:", resolved.url);
+        window.prompt("Энэ линкийг хуулна уу:", resolved.url);
       }
       return;
     }
     window.alert(
-      "We couldn't create a share link. If your scrapbook has many large photos, try using fewer or smaller pictures, check your internet connection, and try again. If you keep seeing this, the sharing service may need to be turned on by the person who gave you this scrapbook.",
+      "Хуваалцах линк үүсгэж чадсангүй. Хэт олон том зурагтай бол цөөн эсвэл жижиг зураг ашиглаад, интернетээ шалгаад дахин оролдоно уу. Энэ алдаа үргэлжилбэл линк үүсгэх үйлчилгээ идэвхжээгүй байж магадгүй.",
     );
+  };
+
+  const finalizeEditingNow = async () => {
+    if (!currentShareId) return;
+    setIsFinalizing(true);
+    const r = await finalizeSharedEditingById(currentShareId);
+    setIsFinalizing(false);
+    if (r.ok === false) {
+      window.alert(toFriendlyFinalizeError(r.error));
+      return;
+    }
+    setShareEditUntilIso(r.editUntil);
+    setIsEditing(false);
+    setShowFinalizePrompt(false);
+    setShareHint("Засварыг дуусгалаа. Одоо энэ линк зөвхөн харах горимтой.");
+    window.setTimeout(() => setShareHint(null), 2200);
   };
 
   useEffect(() => {
@@ -449,11 +630,11 @@ export default function App() {
       const r = await saveSharedPagesById(currentShareId, pages);
       if (!r.ok) {
         setShareHint(
-          "Could not save edits to this link. Refresh and try again.",
+          "Энэ линк дээрх өөрчлөлтийг хадгалж чадсангүй. Хуудсаа сэргээгээд дахин оролдоно уу.",
         );
         return;
       }
-      setShareHint("Changes saved.");
+      setShareHint("Өөрчлөлт хадгалагдлаа.");
       window.setTimeout(() => setShareHint(null), 1200);
     }, 700);
     return () => window.clearTimeout(id);
@@ -542,7 +723,7 @@ export default function App() {
       };
       video.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error("Could not read video metadata."));
+        reject(new Error("Видеоны мэдээллийг уншиж чадсангүй."));
       };
       video.src = url;
     });
@@ -564,12 +745,12 @@ export default function App() {
 
   const removePage = (pageId: string) => {
     if (pages.length <= 2) {
-      window.alert("At least two pages must stay in the book.");
+      window.alert("Номонд хамгийн багадаа 2 хуудас үлдэх ёстой.");
       return;
     }
     if (
       !window.confirm(
-        "Remove this page from the scrapbook? You can still use Undo afterward.",
+        "Энэ хуудсыг устгах уу? Дараа нь Буцаах товчоор сэргээж болно.",
       )
     ) {
       return;
@@ -599,6 +780,15 @@ export default function App() {
     );
   };
 
+  const setVideoAudible = (id: string, audible: boolean) => {
+    setAudibleVideoIds((prev) => {
+      const has = prev.includes(id);
+      if (audible && !has) return [...prev, id];
+      if (!audible && has) return prev.filter((x) => x !== id);
+      return prev;
+    });
+  };
+
   const handleImageUpload = (
     pageId: string,
     e: React.ChangeEvent<HTMLInputElement>,
@@ -606,12 +796,12 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (currentShareId) {
-      setShareHint("Uploading image...");
+      setShareHint("Зураг байршуулж байна...");
       void (async () => {
         const uploaded = await uploadImageFileForShare(currentShareId, file);
         if (uploaded.ok === false) {
           setShareHint(null);
-          window.alert(`Image upload failed: ${uploaded.error}`);
+          window.alert(toFriendlyUploadError(uploaded.error, "image"));
           return;
         }
         if (typeof uploaded.bytesUsed === "number") {
@@ -621,7 +811,7 @@ export default function App() {
           setShareStorageLimitBytes(uploaded.bytesLimit);
         }
         addElement(pageId, "image", uploaded.url);
-        setShareHint("Image uploaded.");
+        setShareHint("Зураг байршууллаа.");
         window.setTimeout(() => setShareHint(null), 1400);
       })();
       e.target.value = "";
@@ -630,7 +820,7 @@ export default function App() {
 
     // Keep JSON light: force cloud upload workflow (no base64 fallback).
     window.alert(
-      "Please create/open a share link first, then upload photos there. This keeps images in cloud storage instead of huge base64 JSON.",
+      "Эхлээд хуваалцах линк үүсгэх/нээх хэрэгтэй. Дараа нь тэнд зургаа байршуулна уу. Ингэснээр зураг cloud дээр хадгалагдана.",
     );
     e.target.value = "";
   };
@@ -643,34 +833,34 @@ export default function App() {
     if (!file) return;
     if (!currentShareId) {
       window.alert(
-        "Please create/open a share link first, then upload videos there.",
+        "Эхлээд хуваалцах линк үүсгэх/нээх хэрэгтэй. Дараа нь тэнд видео байршуулна уу.",
       );
       e.target.value = "";
       return;
     }
     if (!file.type.startsWith("video/")) {
-      window.alert("Please select a video file.");
+      window.alert("Видео файл сонгоно уу.");
       e.target.value = "";
       return;
     }
     try {
       const sec = await probeVideoDurationSec(file);
       if (sec > 60) {
-        window.alert("One video can be maximum 1 minute.");
+        window.alert("Нэг видео хамгийн ихдээ 1 минут байна.");
         e.target.value = "";
         return;
       }
     } catch {
-      window.alert("Could not validate video duration.");
+      window.alert("Видеоны уртыг шалгаж чадсангүй.");
       e.target.value = "";
       return;
     }
 
-    setShareHint("Uploading video...");
+    setShareHint("Видео байршуулж байна...");
     const uploaded = await uploadImageFileForShare(currentShareId, file);
     if (uploaded.ok === false) {
       setShareHint(null);
-      window.alert(`Video upload failed: ${uploaded.error}`);
+      window.alert(toFriendlyUploadError(uploaded.error, "video"));
       e.target.value = "";
       return;
     }
@@ -681,7 +871,7 @@ export default function App() {
       setShareStorageLimitBytes(uploaded.bytesLimit);
     }
     addElement(pageId, "video", uploaded.url);
-    setShareHint("Video uploaded.");
+    setShareHint("Видео байршууллаа.");
     window.setTimeout(() => setShareHint(null), 1400);
     e.target.value = "";
   };
@@ -723,20 +913,20 @@ export default function App() {
             {!canEditSharedLink ? (
               <p className="mb-2 text-white/95">
                 {isShareEditExpired
-                  ? "The editing period for this link has ended"
-                  : "This shared link is view-only"}
+                  ? "Энэ линкийн засварлах хугацаа дууссан"
+                  : "Энэ хуваалцсан линк зөвхөн харах горимтой"}
                 {isShareEditExpired && Number.isFinite(shareEditDeadlineMs)
                   ? ` (${new Date(shareEditDeadlineMs).toLocaleString()})`
                   : ""}
-                . This scrapbook stays exactly as saved.
+                . Скрапбүүк яг хадгалсан хэвээр үлдэнэ.
               </p>
             ) : (
               <p className="mb-2 text-white/95">
-                This private link can be edited directly on this page
+                Энэ хувийн линкийг энэ хуудсан дээр шууд засах боломжтой
                 {shareEditUntilIso && Number.isFinite(shareEditDeadlineMs) ? (
                   <>
                     {" "}
-                    until{" "}
+                    хүртэл{" "}
                     <span className="font-semibold whitespace-nowrap">
                       {new Date(shareEditDeadlineMs).toLocaleString()}
                     </span>
@@ -746,7 +936,7 @@ export default function App() {
                   "."
                 )}
                 {" "}
-                Changes are auto-saved to this same link.
+                Өөрчлөлтүүд энэ линк дээр автоматаар хадгалагдана.
               </p>
             )}
             <div className="flex flex-wrap justify-center gap-2">
@@ -757,7 +947,16 @@ export default function App() {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white text-stone-800 text-xs font-medium hover:bg-stone-100"
                 >
                   <Link2 size={14} />
-                  Copy link
+                  Линк хуулах
+                </button>
+              )}
+              {canEditSharedLink && (
+                <button
+                  type="button"
+                  onClick={() => setShowFinalizePrompt(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-600 text-white text-xs font-medium hover:bg-rose-700"
+                >
+                  Засвар дуусгах
                 </button>
               )}
             </div>
@@ -772,7 +971,7 @@ export default function App() {
               onClick={turnPrev}
               disabled={currentLeaf === 0}
               className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
-              aria-label="Previous page"
+              aria-label="Өмнөх хуудас"
             >
               <ChevronLeft size={26} />
             </button>
@@ -809,6 +1008,7 @@ export default function App() {
                         selectedElementId={selectedElementId}
                         setSelectedElementId={setSelectedElementId}
                         updateElement={updateElement}
+                        onVideoAudibleChange={setVideoAudible}
                         selectedPageId={selectedPageId}
                         setSelectedPageId={setSelectedPageId}
                       />
@@ -824,6 +1024,7 @@ export default function App() {
                           selectedElementId={selectedElementId}
                           setSelectedElementId={setSelectedElementId}
                           updateElement={updateElement}
+                          onVideoAudibleChange={setVideoAudible}
                           selectedPageId={selectedPageId}
                           setSelectedPageId={setSelectedPageId}
                           bendIntensity={bendIntensity}
@@ -840,7 +1041,7 @@ export default function App() {
               onClick={turnNext}
               disabled={currentLeaf === totalLeaves}
               className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
-              aria-label="Next page"
+              aria-label="Дараагийн хуудас"
             >
               <ChevronRight size={26} />
             </button>
@@ -851,7 +1052,7 @@ export default function App() {
         <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50 max-w-[95vw]">
           {sharedViewMode && (
             <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
-              Storage left: {storageLeftMb.toFixed(2)} MB
+              Үлдсэн зай: {storageLeftMb.toFixed(2)} MB
             </p>
           )}
           {shareHint && (
@@ -866,7 +1067,7 @@ export default function App() {
                   type="button"
                   onClick={() => setIsEditing(!isEditing)}
                   className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                  title={isEditing ? "Preview" : "Edit"}
+                  title={isEditing ? "Урьдчилж харах" : "Засах"}
                 >
                   {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
                 </button>
@@ -879,7 +1080,7 @@ export default function App() {
                       onClick={undo}
                       disabled={historyIndex === 0}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Undo"
+                      title="Буцаах"
                     >
                       <Undo2 size={18} />
                     </button>
@@ -888,7 +1089,7 @@ export default function App() {
                       onClick={redo}
                       disabled={historyIndex === history.length - 1}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Redo"
+                      title="Дахин хийх"
                     >
                       <Redo2 size={18} />
                     </button>
@@ -902,7 +1103,7 @@ export default function App() {
                       type="button"
                       onClick={() => void copyShareLink()}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
-                      title="Copy link to send this scrapbook"
+                      title="Энэ скрапбүүкийг явуулах линк хуулах"
                     >
                       <Link2 size={18} />
                     </button>
@@ -932,7 +1133,7 @@ export default function App() {
                     updatePagesWithHistory(newPages);
                   }}
                   className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
-                  title="Add Page"
+                  title="Хуудас нэмэх"
                 >
                   <Plus size={20} />
                 </button>
@@ -944,7 +1145,7 @@ export default function App() {
                   type="button"
                   onClick={() => setIsEditing(!isEditing)}
                   className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                  title={isEditing ? "Preview" : "Edit"}
+                  title={isEditing ? "Урьдчилж харах" : "Засах"}
                 >
                   {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
                 </button>
@@ -956,7 +1157,7 @@ export default function App() {
                       onClick={undo}
                       disabled={historyIndex === 0}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Undo"
+                      title="Буцаах"
                     >
                       <Undo2 size={18} />
                     </button>
@@ -965,7 +1166,7 @@ export default function App() {
                       onClick={redo}
                       disabled={historyIndex === history.length - 1}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Redo"
+                      title="Дахин хийх"
                     >
                       <Redo2 size={18} />
                     </button>
@@ -980,7 +1181,7 @@ export default function App() {
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-stone-800 text-sm font-medium hover:bg-stone-100"
               >
                 <Link2 size={16} />
-                Copy link
+                Линк хуулах
               </button>
             )}
           </div>
@@ -999,7 +1200,7 @@ export default function App() {
             >
               <GripVertical className="size-4 text-stone-400 md:size-[18px]" />
               <span className="text-xs font-semibold text-stone-700 md:text-sm">
-                Editor
+                Засвар
               </span>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 md:p-4">
@@ -1011,6 +1212,8 @@ export default function App() {
                 setOpenAccordion={setOpenAccordion}
                 bendIntensity={bendIntensity}
                 setBendIntensity={setBendIntensity}
+                backgroundMusicUrl={backgroundMusicUrl}
+                setBackgroundMusicUrl={setBackgroundMusicUrl}
                 addElement={addElement}
                 handleImageUpload={handleImageUpload}
                 handleVideoUpload={handleVideoUpload}
@@ -1044,6 +1247,43 @@ export default function App() {
           </div>
         )}
       </div>
+      <div
+        className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
+        aria-hidden
+      >
+        <div ref={ytHostRef} />
+      </div>
+      {showFinalizePrompt && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <p className="text-base font-semibold text-stone-900 mb-2">
+              Анхааруулга
+            </p>
+            <p className="text-sm leading-6 text-stone-700">
+              Үүнийг буцаах боломжгүй, дахин засвар оруулах боломжгүй болно.
+              Та дууссандаа итгэлтэй байна уу?
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowFinalizePrompt(false)}
+                disabled={isFinalizing}
+                className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+              >
+                Үгүй
+              </button>
+              <button
+                type="button"
+                onClick={() => void finalizeEditingNow()}
+                disabled={isFinalizing}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {isFinalizing ? "Түр хүлээнэ үү..." : "Тийм"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1056,6 +1296,7 @@ function EditingSpread({
   selectedElementId,
   setSelectedElementId,
   updateElement,
+  onVideoAudibleChange,
   selectedPageId,
   setSelectedPageId,
 }: {
@@ -1065,6 +1306,7 @@ function EditingSpread({
   selectedElementId: string | null;
   setSelectedElementId: (id: string | null) => void;
   updateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
+  onVideoAudibleChange: (id: string, audible: boolean) => void;
   selectedPageId: string | null;
   setSelectedPageId: (id: string | null) => void;
 }) {
@@ -1094,6 +1336,7 @@ function EditingSpread({
               selectedElementId={selectedElementId}
               onSelectElement={setSelectedElementId}
               onUpdateElement={updateElement}
+              onVideoAudibleChange={onVideoAudibleChange}
               isActive={selectedPageId === left.id}
               onSelectPage={() => setSelectedPageId(left.id)}
             />
@@ -1107,6 +1350,7 @@ function EditingSpread({
               selectedElementId={selectedElementId}
               onSelectElement={setSelectedElementId}
               onUpdateElement={updateElement}
+              onVideoAudibleChange={onVideoAudibleChange}
               isActive={selectedPageId === right.id}
               onSelectPage={() => setSelectedPageId(right.id)}
             />
@@ -1123,6 +1367,7 @@ function EditingSpread({
             selectedElementId={selectedElementId}
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
+            onVideoAudibleChange={onVideoAudibleChange}
             isActive={selectedPageId === left.id}
             onSelectPage={() => setSelectedPageId(left.id)}
           />
@@ -1138,6 +1383,7 @@ function EditingSpread({
             selectedElementId={selectedElementId}
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
+            onVideoAudibleChange={onVideoAudibleChange}
             isActive={selectedPageId === right.id}
             onSelectPage={() => setSelectedPageId(right.id)}
           />
@@ -1323,6 +1569,7 @@ function PageContent({
   selectedElementId,
   onSelectElement,
   onUpdateElement,
+  onVideoAudibleChange,
   isActive,
   onSelectPage,
 }: {
@@ -1331,6 +1578,7 @@ function PageContent({
   selectedElementId: string | null;
   onSelectElement: (id: string | null) => void;
   onUpdateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
+  onVideoAudibleChange?: (id: string, audible: boolean) => void;
   isActive: boolean;
   onSelectPage: () => void;
 }) {
@@ -1359,6 +1607,7 @@ function PageContent({
           onUpdate={(newEl, saveHistory) =>
             onUpdateElement(page.id, newEl, saveHistory)
           }
+          onVideoAudibleChange={onVideoAudibleChange ?? (() => {})}
         />
       ))}
     </div>
@@ -1371,6 +1620,7 @@ function DraggableElement({
   isSelected,
   onSelect,
   onUpdate,
+  onVideoAudibleChange,
 }: {
   key?: React.Key;
   element: PageElement;
@@ -1378,6 +1628,7 @@ function DraggableElement({
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: (el: PageElement, saveHistory?: boolean) => void;
+  onVideoAudibleChange: (id: string, audible: boolean) => void;
 }) {
   const stageScale = useBookStageScale();
   const inv = stageScale > 0 ? 1 / stageScale : 1;
@@ -1387,6 +1638,7 @@ function DraggableElement({
   const [videoMuted, setVideoMuted] = useState(true);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
   const isPolaroid = element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
+  const lastReportedAudibleRef = useRef(false);
   const canResize = element.type === "image" || element.type === "video" || isPolaroid;
   const baseWidth = canResize
     ? (element.width || (isPolaroid ? 210 : element.type === "video" ? 320 : 192))
@@ -1508,6 +1760,25 @@ function DraggableElement({
     io.observe(el);
     return () => io.disconnect();
   }, [element.type, element.id]);
+
+  useEffect(() => {
+    if (element.type !== "video") return;
+    const audible = !videoMuted;
+    if (lastReportedAudibleRef.current !== audible) {
+      onVideoAudibleChange(element.id, audible);
+      lastReportedAudibleRef.current = audible;
+    }
+  }, [element.type, element.id, onVideoAudibleChange, videoMuted]);
+
+  useEffect(
+    () => () => {
+      if (element.type !== "video") return;
+      if (lastReportedAudibleRef.current) {
+        onVideoAudibleChange(element.id, false);
+      }
+    },
+    [element.type, element.id, onVideoAudibleChange],
+  );
 
   useEffect(() => {
     if (element.type !== "video") return;

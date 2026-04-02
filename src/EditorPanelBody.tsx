@@ -76,17 +76,17 @@ const BACKGROUNDS = [
 ];
 const PATTERNS = ["pattern-polka", "pattern-grid", "pattern-lines", ""];
 const FONTS = [
-  { name: "Handwriting", value: "var(--font-handwriting)" },
-  { name: "Sans Serif", value: "var(--font-sans)" },
+  { name: "Гар бичмэл", value: "var(--font-handwriting)" },
+  { name: "Санс сериф", value: "var(--font-sans)" },
   { name: "Pacifico", value: "var(--font-pacifico)" },
   { name: "Amatic", value: "var(--font-amatic)" },
   { name: "Indie", value: "var(--font-indie)" },
 ];
 const TEXT_EFFECTS = [
-  { name: "None", value: "none" },
-  { name: "Shadow", value: "shadow" },
-  { name: "Outline", value: "outline" },
-  { name: "Glow", value: "glow" },
+  { name: "Байхгүй", value: "none" },
+  { name: "Сүүдэр", value: "shadow" },
+  { name: "Хүрээ", value: "outline" },
+  { name: "Гэрэлтэлт", value: "glow" },
 ];
 
 const GIPHY_PUBLIC_BETA_KEY = "dc6zaTOxFJmzC";
@@ -107,6 +107,8 @@ export function EditorPanelBody({
   setOpenAccordion,
   bendIntensity,
   setBendIntensity,
+  backgroundMusicUrl,
+  setBackgroundMusicUrl,
   addElement,
   handleImageUpload,
   handleVideoUpload,
@@ -125,6 +127,8 @@ export function EditorPanelBody({
   setOpenAccordion: Dispatch<SetStateAction<EditorAccordionId | null>>;
   bendIntensity: number;
   setBendIntensity: (v: number) => void;
+  backgroundMusicUrl: string;
+  setBackgroundMusicUrl: (v: string) => void;
   addElement: (pageId: string, type: ElementType, content: string) => void;
   handleImageUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
   handleVideoUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
@@ -223,10 +227,10 @@ export function EditorPanelBody({
       }
       setGifResults(picks);
       if (picks.length === 0) {
-        setGifError("No GIFs found. Try another keyword.");
+        setGifError("GIF олдсонгүй. Өөр түлхүүр үг туршаарай.");
       }
     } catch {
-      setGifError("Could not search GIFs right now.");
+      setGifError("Одоогоор GIF хайж чадсангүй.");
     } finally {
       setGifLoading(false);
     }
@@ -243,7 +247,7 @@ export function EditorPanelBody({
     if (!url) return;
     const looksLikeUrl = /^https?:\/\/\S+/i.test(url);
     if (!looksLikeUrl) {
-      setGifError("Please paste a valid GIF URL (https://...)");
+      setGifError("Зөв GIF URL оруулна уу (https://...)");
       return;
     }
     addElement(selectedPageId, "image", url);
@@ -260,7 +264,7 @@ export function EditorPanelBody({
   if (!selectedPageId) {
     return (
       <p className="py-8 text-center text-sm text-stone-500">
-        Turn to a page to edit.
+        Засах хуудсаа нээгээд сонгоно уу.
       </p>
     );
   }
@@ -276,20 +280,20 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Type}
-        label="Text"
+        label="Текст"
       />
       {openAccordion === "text" && (
         <div className="mb-2 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <button
             type="button"
             onClick={() => {
-              const t = prompt("Enter text:");
+              const t = prompt("Текст оруулна уу:");
               if (t) addElement(selectedPageId, "text", t);
             }}
             className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50"
           >
             <Type size={22} />
-            <span className="text-sm font-medium">Add text</span>
+            <span className="text-sm font-medium">Текст нэмэх</span>
           </button>
         </div>
       )}
@@ -299,14 +303,14 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={ImageIcon}
-        label="Photo"
+        label="Зураг"
       />
       {openAccordion === "photo" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div className="grid grid-cols-2 gap-2">
             <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50">
               <ImageIcon size={22} />
-              <span className="text-sm font-medium">Upload photo</span>
+              <span className="text-sm font-medium">Зураг оруулах</span>
               <input
                 type="file"
                 accept="image/*"
@@ -316,7 +320,7 @@ export function EditorPanelBody({
             </label>
             <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50">
               <ImageIcon size={22} />
-              <span className="text-sm font-medium">Upload video</span>
+              <span className="text-sm font-medium">Видео оруулах</span>
               <input
                 type="file"
                 accept="video/*"
@@ -327,7 +331,7 @@ export function EditorPanelBody({
           </div>
           <div className="rounded-lg border border-stone-200 bg-white p-2">
             <p className="mb-2 text-xs font-medium text-stone-600">
-              Paste GIF URL
+              GIF линк оруулах
             </p>
             <div className="mb-3 flex gap-2">
               <input
@@ -344,11 +348,11 @@ export function EditorPanelBody({
                 disabled={!gifDirectUrl.trim()}
                 className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Add
+                Нэмэх
               </button>
             </div>
               <p className="mb-2 text-xs font-medium text-stone-600">
-              Search GIF (GIPHY / Tenor)
+              GIF хайх (GIPHY / Tenor)
             </p>
             <div className="mb-2 flex gap-2">
               <input
@@ -356,7 +360,7 @@ export function EditorPanelBody({
                 value={gifQuery}
                 onChange={(e) => setGifQuery(e.target.value)}
                 onKeyDown={onGifQueryKeyDown}
-                placeholder="love, birthday, flowers..."
+                placeholder="хайр, төрсөн өдөр, цэцэг..."
                 className="min-w-0 flex-1 rounded-md border border-stone-200 px-2 py-1.5 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-400"
               />
               <button
@@ -365,7 +369,7 @@ export function EditorPanelBody({
                 disabled={gifLoading || !gifQuery.trim()}
                 className="rounded-md bg-stone-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-900 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {gifLoading ? "..." : "Search"}
+                {gifLoading ? "..." : "Хайх"}
               </button>
             </div>
             {gifError && <p className="mb-2 text-[11px] text-rose-600">{gifError}</p>}
@@ -377,7 +381,7 @@ export function EditorPanelBody({
                     type="button"
                     onClick={() => addElement(selectedPageId, "image", gif.fullUrl)}
                     className="group overflow-hidden rounded-md border border-stone-200 bg-stone-100 hover:border-rose-300"
-                    title="Add this GIF"
+                    title="Энэ GIF-ийг нэмэх"
                   >
                     <img
                       src={gif.previewUrl}
@@ -398,7 +402,7 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Sticker}
-        label="Stickers"
+        label="Стикер"
       />
       {openAccordion === "stickers" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
@@ -410,7 +414,7 @@ export function EditorPanelBody({
             className="w-full rounded-lg border border-stone-200 bg-white p-2 text-left hover:bg-rose-50"
           >
             <p className="mb-2 text-xs font-medium text-stone-600">
-              Add Polaroid Sticker
+              Полароид стикер нэмэх
             </p>
             <div className="mx-auto h-20 w-16 rounded-sm border border-[#e6dfd5] bg-[#fbf8f1] p-1 shadow-md">
               <div className="h-full w-full rounded-[2px] border border-black/10 bg-linear-to-br from-stone-200 to-stone-300" />
@@ -438,12 +442,12 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Palette}
-        label="Page style"
+        label="Хуудасны загвар"
       />
       {openAccordion === "pageStyle" && (
         <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div>
-            <p className="mb-2 text-xs text-stone-500">Background color</p>
+            <p className="mb-2 text-xs text-stone-500">Дэвсгэр өнгө</p>
             <div className="flex flex-wrap gap-2">
               {BACKGROUNDS.map((bg) => (
                 <button
@@ -456,7 +460,7 @@ export function EditorPanelBody({
             </div>
           </div>
           <div>
-            <p className="mb-2 text-xs text-stone-500">Pattern</p>
+            <p className="mb-2 text-xs text-stone-500">Хээ</p>
             <div className="grid grid-cols-2 gap-2">
               {PATTERNS.map((pattern) => (
                 <button
@@ -465,7 +469,7 @@ export function EditorPanelBody({
                   onClick={() => updatePagePattern(selectedPageId, pattern)}
                   className={`rounded-lg border px-3 py-2 text-xs ${pages.find((p) => p.id === selectedPageId)?.pattern === pattern ? "border-rose-500 bg-rose-50 text-rose-700" : "border-stone-200 bg-white text-stone-600"}`}
                 >
-                  {pattern || "None"}
+                  {pattern || "Байхгүй"}
                 </button>
               ))}
             </div>
@@ -478,12 +482,12 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={BookOpen}
-        label="Book effects"
+        label="Номын эффект"
       />
       {openAccordion === "bookEffects" && (
-        <div className="mb-2 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
+        <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs text-stone-500">Paper bending</p>
+            <p className="text-xs text-stone-500">Хуудасны нугаралт</p>
             <span className="text-xs text-stone-400">
               {bendIntensity.toFixed(1)}
             </span>
@@ -497,6 +501,20 @@ export function EditorPanelBody({
             onChange={(e) => setBendIntensity(parseFloat(e.target.value))}
             className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-stone-200 accent-rose-500"
           />
+          <div>
+            <p className="mb-2 text-xs text-stone-500">Арын хөгжим (YouTube линк)</p>
+            <input
+              type="url"
+              value={backgroundMusicUrl}
+              onChange={(e) => setBackgroundMusicUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+              className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+            <p className="mt-1 text-[11px] text-stone-500">
+              Эхний товшилт/хүрэлтээс хойш тоглоно. Үндсэн дуу 50%, видеоны дууг
+              нээхэд 20% болно.
+            </p>
+          </div>
         </div>
       )}
 
@@ -505,7 +523,7 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={MousePointerClick}
-        label="Selected item"
+        label="Сонгосон элемент"
         disabled={!selectedElementId}
       />
       {openAccordion === "selection" && selectedElementId && selectedEl && (
@@ -513,7 +531,7 @@ export function EditorPanelBody({
           {selectedEl.type === "text" && (
             <>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Text color</p>
+                <p className="mb-2 text-xs text-stone-500">Текстийн өнгө</p>
                 <div className="flex flex-wrap gap-2">
                   {[
                     "#333333",
@@ -537,7 +555,7 @@ export function EditorPanelBody({
                 </div>
               </div>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Font style</p>
+                <p className="mb-2 text-xs text-stone-500">Фонтын төрөл</p>
                 <select
                   value={
                     selectedEl.fontFamily || "var(--font-handwriting)"
@@ -562,7 +580,7 @@ export function EditorPanelBody({
                 </select>
               </div>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Text effect</p>
+                <p className="mb-2 text-xs text-stone-500">Текстийн эффект</p>
                 <div className="grid grid-cols-2 gap-2">
                   {TEXT_EFFECTS.map((effect) => (
                     <button
@@ -585,7 +603,7 @@ export function EditorPanelBody({
           )}
 
           <div>
-            <p className="mb-2 text-xs text-stone-500">Rotation</p>
+            <p className="mb-2 text-xs text-stone-500">Эргүүлэх</p>
             <input
               type="range"
               min="-180"
@@ -607,7 +625,7 @@ export function EditorPanelBody({
           </div>
 
           <div>
-            <p className="mb-2 text-xs text-stone-500">Width</p>
+            <p className="mb-2 text-xs text-stone-500">Өргөн</p>
             <input
               type="range"
               min={selectedEl.type === "image" || selectedEl.type === "video" ? "50" : "16"}
@@ -653,7 +671,7 @@ export function EditorPanelBody({
             selectedEl.type === "video" ||
             selectedEl.content === POLAROID_STICKER_TOKEN) && (
             <div>
-              <p className="mb-2 text-xs text-stone-500">Height</p>
+              <p className="mb-2 text-xs text-stone-500">Өндөр</p>
               <input
                 type="range"
                 min="50"
@@ -680,7 +698,7 @@ export function EditorPanelBody({
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-50 py-2 px-4 text-red-600 hover:bg-red-100"
           >
             <Trash2 size={16} />
-            Delete element
+            Элемент устгах
           </button>
         </div>
       )}
@@ -690,7 +708,7 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Files}
-        label="Pages"
+        label="Хуудсууд"
       />
       {openAccordion === "pages" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
@@ -701,7 +719,7 @@ export function EditorPanelBody({
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 py-3 px-4 font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-red-50"
           >
             <Trash2 size={18} />
-            Remove this page
+            Энэ хуудсыг устгах
           </button>
           <button
             type="button"
@@ -709,7 +727,7 @@ export function EditorPanelBody({
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-stone-100 py-3 px-4 font-medium text-stone-700 hover:bg-stone-200"
           >
             <Plus size={18} />
-            Add new pages
+            Шинэ хуудас нэмэх
           </button>
         </div>
       )}
