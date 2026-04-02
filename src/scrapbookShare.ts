@@ -21,6 +21,7 @@ export interface PageElement {
   height?: number;
   fontFamily?: string;
   textEffect?: string;
+  frameImage?: string;
 }
 
 export interface PageData {
@@ -74,6 +75,7 @@ function parseElement(raw: unknown): PageElement | null {
   if (typeof e.height === "number") out.height = e.height;
   if (typeof e.fontFamily === "string") out.fontFamily = e.fontFamily;
   if (typeof e.textEffect === "string") out.textEffect = e.textEffect;
+  if (typeof e.frameImage === "string") out.frameImage = e.frameImage;
   return out;
 }
 

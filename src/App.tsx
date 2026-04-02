@@ -111,9 +111,12 @@ const defaultPages: PageData[] = [
         id: "i1",
         type: "image",
         x: 80,
-        y: 200,
+        y: 170,
         rotation: -3,
-        content: "https://picsum.photos/seed/cute/300/200",
+        content:
+          "/assets/ChatGPT%20Image%20Mar%2024,%202026,%2004_41_37%20PM.png",
+        width: 210,
+        height: 290,
       },
     ],
   },
@@ -872,6 +875,45 @@ export default function App() {
     );
   };
 
+  const dropImageIntoPolaroid = (
+    pageId: string,
+    imageEl: PageElement,
+    frameId: string,
+  ) => {
+    const imageW = imageEl.width || 192;
+    const imageH = imageEl.height || 192;
+    updatePagesWithHistory(
+      pages.map((p) => {
+        if (p.id !== pageId) return p;
+        const hasFrame = p.elements.some(
+          (e) =>
+            e.id === frameId &&
+            e.type === "sticker" &&
+            e.content === POLAROID_STICKER_TOKEN,
+        );
+        if (!hasFrame) return p;
+        return {
+          ...p,
+          elements: p.elements
+            .map((e) =>
+              e.id === frameId
+                ? {
+                    ...e,
+                    frameImage: imageEl.content,
+                    x: imageEl.x - 12,
+                    y: imageEl.y - 12,
+                    width: imageW + 24,
+                    height: imageH + 44,
+                  }
+                : e,
+            )
+            .filter((e) => e.id !== imageEl.id),
+        };
+      }),
+    );
+    setSelectedElementId(frameId);
+  };
+
   const setVideoAudible = (id: string, audible: boolean) => {
     setAudibleVideoIds((prev) => {
       const has = prev.includes(id);
@@ -1142,6 +1184,7 @@ export default function App() {
                         setSelectedElementId={setSelectedElementId}
                         updateElement={updateElement}
                         onVideoAudibleChange={setVideoAudible}
+                        onDropImageIntoPolaroid={dropImageIntoPolaroid}
                         isVideoMuted={isVideoMuted}
                         setVideoMuted={setVideoMuted}
                         selectedPageId={selectedPageId}
@@ -1160,6 +1203,7 @@ export default function App() {
                           setSelectedElementId={setSelectedElementId}
                           updateElement={updateElement}
                           onVideoAudibleChange={setVideoAudible}
+                          onDropImageIntoPolaroid={dropImageIntoPolaroid}
                           isVideoMuted={isVideoMuted}
                           setVideoMuted={setVideoMuted}
                           selectedPageId={selectedPageId}
@@ -1437,6 +1481,7 @@ function EditingSpread({
   setSelectedElementId,
   updateElement,
   onVideoAudibleChange,
+  onDropImageIntoPolaroid,
   isVideoMuted,
   setVideoMuted,
   selectedPageId,
@@ -1449,6 +1494,11 @@ function EditingSpread({
   setSelectedElementId: (id: string | null) => void;
   updateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
   onVideoAudibleChange: (id: string, audible: boolean) => void;
+  onDropImageIntoPolaroid: (
+    pageId: string,
+    imageEl: PageElement,
+    frameId: string,
+  ) => void;
   isVideoMuted: (id: string) => boolean;
   setVideoMuted: (id: string, muted: boolean) => void;
   selectedPageId: string | null;
@@ -1481,6 +1531,7 @@ function EditingSpread({
               onSelectElement={setSelectedElementId}
               onUpdateElement={updateElement}
               onVideoAudibleChange={onVideoAudibleChange}
+              onDropImageIntoPolaroid={onDropImageIntoPolaroid}
               isVideoMuted={isVideoMuted}
               setVideoMuted={setVideoMuted}
               isActive={selectedPageId === left.id}
@@ -1497,6 +1548,7 @@ function EditingSpread({
               onSelectElement={setSelectedElementId}
               onUpdateElement={updateElement}
               onVideoAudibleChange={onVideoAudibleChange}
+              onDropImageIntoPolaroid={onDropImageIntoPolaroid}
               isVideoMuted={isVideoMuted}
               setVideoMuted={setVideoMuted}
               isActive={selectedPageId === right.id}
@@ -1516,6 +1568,7 @@ function EditingSpread({
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
             onVideoAudibleChange={onVideoAudibleChange}
+            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
             isVideoMuted={isVideoMuted}
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === left.id}
@@ -1534,6 +1587,7 @@ function EditingSpread({
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
             onVideoAudibleChange={onVideoAudibleChange}
+            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
             isVideoMuted={isVideoMuted}
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === right.id}
@@ -1555,6 +1609,7 @@ function FlipPage({
   setSelectedElementId,
   updateElement,
   onVideoAudibleChange,
+  onDropImageIntoPolaroid,
   isVideoMuted,
   setVideoMuted,
   selectedPageId,
@@ -1668,6 +1723,7 @@ function FlipPage({
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
             onVideoAudibleChange={onVideoAudibleChange}
+            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
             isVideoMuted={isVideoMuted}
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === leaf.front?.id}
@@ -1700,6 +1756,7 @@ function FlipPage({
             onSelectElement={setSelectedElementId}
             onUpdateElement={updateElement}
             onVideoAudibleChange={onVideoAudibleChange}
+            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
             isVideoMuted={isVideoMuted}
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === leaf.back?.id}
@@ -1731,6 +1788,7 @@ function PageContent({
   onSelectElement,
   onUpdateElement,
   onVideoAudibleChange,
+  onDropImageIntoPolaroid,
   isVideoMuted,
   setVideoMuted,
   isActive,
@@ -1742,6 +1800,11 @@ function PageContent({
   onSelectElement: (id: string | null) => void;
   onUpdateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
   onVideoAudibleChange?: (id: string, audible: boolean) => void;
+  onDropImageIntoPolaroid: (
+    pageId: string,
+    imageEl: PageElement,
+    frameId: string,
+  ) => void;
   isVideoMuted: (id: string) => boolean;
   setVideoMuted: (id: string, muted: boolean) => void;
   isActive: boolean;
@@ -1774,6 +1837,10 @@ function PageContent({
           onUpdate={(newEl, saveHistory) =>
             onUpdateElement(page.id, newEl, saveHistory)
           }
+          pageElements={page.elements}
+          onDropImageIntoPolaroid={(imageEl, frameId) =>
+            onDropImageIntoPolaroid(page.id, imageEl, frameId)
+          }
           onVideoAudibleChange={onVideoAudibleChange ?? (() => {})}
           videoMuted={isVideoMuted(el.id)}
           setVideoMuted={(muted) => setVideoMuted(el.id, muted)}
@@ -1789,6 +1856,8 @@ function DraggableElement({
   isSelected,
   onSelect,
   onUpdate,
+  pageElements,
+  onDropImageIntoPolaroid,
   onVideoAudibleChange,
   videoMuted,
   setVideoMuted,
@@ -1799,6 +1868,8 @@ function DraggableElement({
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: (el: PageElement, saveHistory?: boolean) => void;
+  pageElements: PageElement[];
+  onDropImageIntoPolaroid: (imageEl: PageElement, frameId: string) => void;
   onVideoAudibleChange: (id: string, audible: boolean) => void;
   videoMuted: boolean;
   setVideoMuted: (muted: boolean) => void;
@@ -1994,11 +2065,38 @@ function DraggableElement({
         dragControls.start(e);
       }}
       onDragEnd={(e, info) => {
-        onUpdate({
+        const next = {
           ...element,
           x: element.x + info.offset.x * inv,
           y: element.y + info.offset.y * inv,
-        });
+        };
+        if (
+          element.type === "sticker" &&
+          element.content === POLAROID_STICKER_TOKEN
+        ) {
+          const fw = next.width || 210;
+          const fh = next.height || 260;
+          const frameCenterX = next.x + fw / 2;
+          const frameCenterY = next.y + fh / 2;
+          const targetImage = [...pageElements]
+            .reverse()
+            .find((img) => {
+              if (img.type !== "image" || img.id === element.id) return false;
+              const iw = img.width || 192;
+              const ih = img.height || 192;
+              return (
+                frameCenterX >= img.x &&
+                frameCenterX <= img.x + iw &&
+                frameCenterY >= img.y &&
+                frameCenterY <= img.y + ih
+              );
+            });
+          if (targetImage) {
+            onDropImageIntoPolaroid(targetImage, element.id);
+            return;
+          }
+        }
+        onUpdate(next);
       }}
       onClick={(e) => {
         if (isEditing) {
@@ -2045,7 +2143,16 @@ function DraggableElement({
             }}
           >
             <div className="px-3 pt-3 pb-8 h-full">
-              <div className="h-full w-full rounded-[2px] border border-black/10 bg-linear-to-br from-stone-200 to-stone-300" />
+              {element.frameImage ? (
+                <img
+                  src={element.frameImage}
+                  alt="polaroid"
+                  className="h-full w-full rounded-[2px] border border-black/10 object-cover"
+                  draggable={false}
+                />
+              ) : (
+                <div className="h-full w-full rounded-[2px] border border-black/10 bg-linear-to-br from-stone-200 to-stone-300" />
+              )}
             </div>
           </div>
         ) : (
@@ -2105,12 +2212,24 @@ function DraggableElement({
           />
           {canResize && (
             <>
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "nw")} className={`${resizeHandleClass} -left-1.5 -top-1.5 cursor-nwse-resize`} />
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "ne")} className={`${resizeHandleClass} -right-1.5 -top-1.5 cursor-nesw-resize`} />
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "e")} className={`${resizeHandleClass} -right-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize`} />
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "se")} className={`${resizeHandleClass} -bottom-1.5 -right-1.5 cursor-nwse-resize`} />
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "sw")} className={`${resizeHandleClass} -bottom-1.5 -left-1.5 cursor-nesw-resize`} />
-              <button type="button" data-transform-handle="true" onPointerDown={(e) => startResize(e, "w")} className={`${resizeHandleClass} -left-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize`} />
+              <button
+                type="button"
+                data-transform-handle="true"
+                onPointerDown={(e) => startResize(e, "e")}
+                className={`${resizeHandleClass} -right-1.5 top-1/2 -translate-y-1/2 cursor-ew-resize`}
+              />
+              <button
+                type="button"
+                data-transform-handle="true"
+                onPointerDown={(e) => startResize(e, "se")}
+                className={`${resizeHandleClass} -bottom-1.5 -right-1.5 cursor-nwse-resize`}
+              />
+              <button
+                type="button"
+                data-transform-handle="true"
+                onPointerDown={(e) => startResize(e, "s")}
+                className={`${resizeHandleClass} -bottom-1.5 left-1/2 -translate-x-1/2 cursor-ns-resize`}
+              />
             </>
           )}
         </>
