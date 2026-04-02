@@ -327,18 +327,22 @@ export default function App() {
   const prevSelectedElementId = useRef<string | null>(null);
   const ytPlayerRef = useRef<any>(null);
   const ytHostRef = useRef<HTMLDivElement | null>(null);
+  const hasAudioGestureRef = useRef(false);
 
   useEffect(() => {
     editorPlacementRef.current = editorPlacement;
   }, [editorPlacement]);
 
+  useEffect(() => {
+    hasAudioGestureRef.current = hasAudioGesture;
+  }, [hasAudioGesture]);
+
   const tryStartBackgroundMusic = useCallback(() => {
     const p = ytPlayerRef.current;
     if (!p) return;
     p.unMute?.();
-    p.setVolume?.(audibleVideoIds.length > 0 ? 20 : 50);
     p.playVideo?.();
-  }, [audibleVideoIds.length]);
+  }, []);
 
   useEffect(() => {
     const onFirstInteract = () => {
@@ -412,25 +416,23 @@ export default function App() {
         onReady: (ev: any) => {
           ev.target.setVolume(50);
           setYtReadyTick((n) => n + 1);
-          if (hasAudioGesture) {
-            tryStartBackgroundMusic();
-          }
+          if (hasAudioGestureRef.current) tryStartBackgroundMusic();
         },
       },
     });
-  }, [hasAudioGesture, isYtApiReady, tryStartBackgroundMusic, ytVideoId]);
+  }, [isYtApiReady, ytVideoId, tryStartBackgroundMusic]);
 
   useEffect(() => {
     const p = ytPlayerRef.current;
     if (!p) return;
     const target = audibleVideoIds.length > 0 ? 20 : 50;
     p.setVolume?.(target);
-  }, [audibleVideoIds]);
+  }, [audibleVideoIds, ytReadyTick]);
 
   useEffect(() => {
     if (!hasAudioGesture || !ytVideoId) return;
     tryStartBackgroundMusic();
-  }, [hasAudioGesture, tryStartBackgroundMusic, ytReadyTick, ytVideoId]);
+  }, [hasAudioGesture, ytReadyTick, ytVideoId, tryStartBackgroundMusic]);
 
   useEffect(() => {
     const onResize = () => {
