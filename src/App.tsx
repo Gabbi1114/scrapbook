@@ -276,8 +276,15 @@ function toFriendlyFinalizeError(rawError: string): string {
 
 const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
 const LOADING_SCENE_EXIT_MS = 700;
+const LOADING_PROGRESS_SETTLE_MS = 220;
 
-function LoadingScene({ isExiting }: { isExiting: boolean }) {
+function LoadingScene({
+  isExiting,
+  progress,
+}: {
+  isExiting: boolean;
+  progress: number;
+}) {
   return (
     <div className={`wizard-loader ${isExiting ? "wizard-loader--exit" : ""}`}>
       <div className="scene">
@@ -308,7 +315,9 @@ function LoadingScene({ isExiting }: { isExiting: boolean }) {
           </div>
         </div>
       </div>
-      <div className="progress" />
+      <div className="progress">
+        <div className="progress-fill" style={{ width: `${progress}%` }} />
+      </div>
       <div className="noise" />
     </div>
   );
@@ -321,6 +330,7 @@ export default function App() {
   );
   const [isLoadingSceneVisible, setIsLoadingSceneVisible] = useState(true);
   const [isLoadingSceneExiting, setIsLoadingSceneExiting] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(6);
   const init = getInitialPagesAndShare();
   const initialShareId =
     typeof window !== "undefined"
@@ -404,14 +414,36 @@ export default function App() {
   }, [isWindowLoaded]);
 
   useEffect(() => {
-    if (!isInitialBootstrapDone || !isWindowLoaded) return;
-    if (!isLoadingSceneVisible || isLoadingSceneExiting) return;
-    setIsLoadingSceneExiting(true);
-    const t = window.setTimeout(
+    if (!isLoadingSceneVisible) return;
+    const isLoaderReady = isInitialBootstrapDone && isWindowLoaded;
+    if (isLoaderReady) {
+      setLoadingProgress(100);
+      return;
+    }
+    const t = window.setInterval(() => {
+      setLoadingProgress((p) => {
+        const next = p + Math.max(0.35, (94 - p) * 0.08);
+        return Math.min(94, next);
+      });
+    }, 120);
+    return () => window.clearInterval(t);
+  }, [isLoadingSceneVisible, isInitialBootstrapDone, isWindowLoaded]);
+
+  useEffect(() => {
+    const isLoaderReady = isInitialBootstrapDone && isWindowLoaded;
+    if (!isLoaderReady || !isLoadingSceneVisible || isLoadingSceneExiting) return;
+    setLoadingProgress(100);
+    const startExit = window.setTimeout(() => {
+      setIsLoadingSceneExiting(true);
+    }, LOADING_PROGRESS_SETTLE_MS);
+    const hide = window.setTimeout(
       () => setIsLoadingSceneVisible(false),
-      LOADING_SCENE_EXIT_MS,
+      LOADING_PROGRESS_SETTLE_MS + LOADING_SCENE_EXIT_MS,
     );
-    return () => window.clearTimeout(t);
+    return () => {
+      window.clearTimeout(startExit);
+      window.clearTimeout(hide);
+    };
   }, [
     isInitialBootstrapDone,
     isWindowLoaded,
@@ -1252,7 +1284,10 @@ export default function App() {
           </div>
         </div>
         {isLoadingSceneVisible && (
-          <LoadingScene isExiting={isLoadingSceneExiting} />
+          <LoadingScene
+            isExiting={isLoadingSceneExiting}
+            progress={loadingProgress}
+          />
         )}
       </>
     );
@@ -1652,7 +1687,12 @@ export default function App() {
           </div>
         )}
       </div>
-      {isLoadingSceneVisible && <LoadingScene isExiting={isLoadingSceneExiting} />}
+      {isLoadingSceneVisible && (
+        <LoadingScene
+          isExiting={isLoadingSceneExiting}
+          progress={loadingProgress}
+        />
+      )}
     </>
   );
 }
