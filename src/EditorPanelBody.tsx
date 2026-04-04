@@ -302,8 +302,12 @@ export function EditorPanelBody({
           <button
             type="button"
             onClick={() => {
-              const t = prompt("Текст оруулна уу:");
-              if (t) addElement(selectedPageId, "text", t);
+              addElement(
+                selectedPageId,
+                "text",
+                "Текстээ энд бичнэ үү",
+                { width: 260, height: 120 },
+              );
             }}
             className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50"
           >
@@ -543,6 +547,20 @@ export function EditorPanelBody({
           {selectedEl.type === "text" && (
             <>
               <div>
+                <p className="mb-2 text-xs text-stone-500">Текст</p>
+                <textarea
+                  value={selectedEl.content}
+                  onChange={(e) =>
+                    updateElement(selectedPageId, {
+                      ...selectedEl,
+                      content: e.target.value,
+                    })
+                  }
+                  rows={4}
+                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+              <div>
                 <p className="mb-2 text-xs text-stone-500">Текстийн өнгө</p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -590,6 +608,72 @@ export function EditorPanelBody({
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <p className="mb-2 text-xs text-stone-500">Текстийн хэв маяг</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateElement(selectedPageId, {
+                        ...selectedEl,
+                        fontWeight:
+                          selectedEl.fontWeight === "bold" ? "normal" : "bold",
+                      })
+                    }
+                    className={`rounded-lg border px-3 py-2 text-sm ${selectedEl.fontWeight === "bold" ? "border-rose-500 bg-rose-50 text-rose-700" : "border-stone-200 bg-white text-stone-700"}`}
+                  >
+                    <span className="font-bold">B</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateElement(selectedPageId, {
+                        ...selectedEl,
+                        fontStyle:
+                          selectedEl.fontStyle === "italic"
+                            ? "normal"
+                            : "italic",
+                      })
+                    }
+                    className={`rounded-lg border px-3 py-2 text-sm ${selectedEl.fontStyle === "italic" ? "border-rose-500 bg-rose-50 text-rose-700" : "border-stone-200 bg-white text-stone-700"}`}
+                  >
+                    <span className="italic">I</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateElement(selectedPageId, {
+                        ...selectedEl,
+                        textDecoration:
+                          selectedEl.textDecoration === "underline"
+                            ? "none"
+                            : "underline",
+                      })
+                    }
+                    className={`rounded-lg border px-3 py-2 text-sm ${selectedEl.textDecoration === "underline" ? "border-rose-500 bg-rose-50 text-rose-700" : "border-stone-200 bg-white text-stone-700"}`}
+                  >
+                    <span className="underline">U</span>
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs text-stone-500">Текстийн хэмжээ</p>
+                <input
+                  type="range"
+                  min="12"
+                  max="96"
+                  value={selectedEl.fontSize || 32}
+                  onChange={(e) =>
+                    updateElement(
+                      selectedPageId,
+                      { ...selectedEl, fontSize: parseInt(e.target.value, 10) },
+                      false,
+                    )
+                  }
+                  onPointerUp={() => updatePagesWithHistory(pages)}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-stone-200 accent-rose-500"
+                />
               </div>
               <div>
                 <p className="mb-2 text-xs text-stone-500">Текстийн эффект</p>
@@ -640,10 +724,17 @@ export function EditorPanelBody({
             <p className="mb-2 text-xs text-stone-500">Өргөн</p>
             <input
               type="range"
-              min={selectedEl.type === "image" || selectedEl.type === "video" ? "50" : "16"}
+              min={
+                selectedEl.type === "image" ||
+                selectedEl.type === "video" ||
+                selectedEl.type === "text"
+                  ? "50"
+                  : "16"
+              }
               max={
                 selectedEl.type === "image" ||
                 selectedEl.type === "video" ||
+                selectedEl.type === "text" ||
                 selectedEl.content === POLAROID_STICKER_TOKEN
                   ? "500"
                   : "128"
@@ -651,6 +742,7 @@ export function EditorPanelBody({
               value={
                 selectedEl.type === "image" ||
                 selectedEl.type === "video" ||
+                selectedEl.type === "text" ||
                 selectedEl.content === POLAROID_STICKER_TOKEN
                   ? selectedEl.width || 192
                   : selectedEl.fontSize || 32
@@ -660,6 +752,7 @@ export function EditorPanelBody({
                 if (
                   selectedEl.type === "image" ||
                   selectedEl.type === "video" ||
+                  selectedEl.type === "text" ||
                   selectedEl.content === POLAROID_STICKER_TOKEN
                 ) {
                   updateElement(
@@ -681,6 +774,7 @@ export function EditorPanelBody({
           </div>
           {(selectedEl.type === "image" ||
             selectedEl.type === "video" ||
+            selectedEl.type === "text" ||
             selectedEl.content === POLAROID_STICKER_TOKEN) && (
             <div>
               <p className="mb-2 text-xs text-stone-500">Өндөр</p>

@@ -275,8 +275,52 @@ function toFriendlyFinalizeError(rawError: string): string {
 }
 
 const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
+const LOADING_SCENE_EXIT_MS = 700;
+
+function LoadingScene({ isExiting }: { isExiting: boolean }) {
+  return (
+    <div className={`wizard-loader ${isExiting ? "wizard-loader--exit" : ""}`}>
+      <div className="scene">
+        <div className="objects">
+          <div className="square" />
+          <div className="circle" />
+          <div className="triangle" />
+        </div>
+        <div className="wizard">
+          <div className="body" />
+          <div className="right-arm">
+            <div className="right-hand" />
+          </div>
+          <div className="left-arm">
+            <div className="left-hand" />
+          </div>
+          <div className="head">
+            <div className="beard" />
+            <div className="face">
+              <div className="adds" />
+            </div>
+            <div className="hat">
+              <div className="hat-of-the-hat" />
+              <div className="four-point-star --first" />
+              <div className="four-point-star --second" />
+              <div className="four-point-star --third" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="progress" />
+      <div className="noise" />
+    </div>
+  );
+}
 
 export default function App() {
+  const [isInitialBootstrapDone, setIsInitialBootstrapDone] = useState(false);
+  const [isWindowLoaded, setIsWindowLoaded] = useState(
+    typeof document !== "undefined" && document.readyState === "complete",
+  );
+  const [isLoadingSceneVisible, setIsLoadingSceneVisible] = useState(true);
+  const [isLoadingSceneExiting, setIsLoadingSceneExiting] = useState(false);
   const init = getInitialPagesAndShare();
   const initialShareId =
     typeof window !== "undefined"
@@ -351,6 +395,29 @@ export default function App() {
   useEffect(() => {
     editorPlacementRef.current = editorPlacement;
   }, [editorPlacement]);
+
+  useEffect(() => {
+    if (isWindowLoaded) return;
+    const onLoaded = () => setIsWindowLoaded(true);
+    window.addEventListener("load", onLoaded, { once: true });
+    return () => window.removeEventListener("load", onLoaded);
+  }, [isWindowLoaded]);
+
+  useEffect(() => {
+    if (!isInitialBootstrapDone || !isWindowLoaded) return;
+    if (!isLoadingSceneVisible || isLoadingSceneExiting) return;
+    setIsLoadingSceneExiting(true);
+    const t = window.setTimeout(
+      () => setIsLoadingSceneVisible(false),
+      LOADING_SCENE_EXIT_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [
+    isInitialBootstrapDone,
+    isWindowLoaded,
+    isLoadingSceneVisible,
+    isLoadingSceneExiting,
+  ]);
 
   useEffect(() => {
     hasAudioGestureRef.current = hasAudioGesture;
@@ -597,39 +664,45 @@ export default function App() {
     const sid = params.get("share");
     let cancelled = false;
     (async () => {
-      if (sid) {
-        const bundle = await fetchSharedBundleById(sid);
+      try {
+        if (sid) {
+          const bundle = await fetchSharedBundleById(sid);
+          if (cancelled) return;
+          if (bundle) {
+            setCurrentShareId(sid);
+            setPages(bundle.pages);
+            setBackgroundMusicUrl(bundle.musicUrl || "");
+            setShareEditUntilIso(bundle.editUntil);
+            setShareStorageUsedBytes(bundle.mediaBytes);
+            setSharedViewMode(true);
+            setHistory([bundle.pages]);
+            setHistoryIndex(0);
+          }
+          return;
+        }
+        if (!canPublishShareLinks()) return;
+        if (!studioRootShareId) return;
+        const ensured = await ensureSharedPagesById(
+          studioRootShareId,
+          initialPagesRef.current,
+        );
+        if (cancelled || !ensured.ok) return;
+        const bundle = await fetchSharedBundleById(studioRootShareId);
         if (cancelled) return;
         if (bundle) {
-          setCurrentShareId(sid);
+          setCurrentShareId(studioRootShareId);
           setPages(bundle.pages);
           setBackgroundMusicUrl(bundle.musicUrl || "");
           setShareEditUntilIso(bundle.editUntil);
           setShareStorageUsedBytes(bundle.mediaBytes);
-          setSharedViewMode(true);
+          setSharedViewMode(false);
           setHistory([bundle.pages]);
           setHistoryIndex(0);
         }
-        return;
-      }
-      if (!canPublishShareLinks()) return;
-      if (!studioRootShareId) return;
-      const ensured = await ensureSharedPagesById(
-        studioRootShareId,
-        initialPagesRef.current,
-      );
-      if (cancelled || !ensured.ok) return;
-      const bundle = await fetchSharedBundleById(studioRootShareId);
-      if (cancelled) return;
-      if (bundle) {
-        setCurrentShareId(studioRootShareId);
-        setPages(bundle.pages);
-        setBackgroundMusicUrl(bundle.musicUrl || "");
-        setShareEditUntilIso(bundle.editUntil);
-        setShareStorageUsedBytes(bundle.mediaBytes);
-        setSharedViewMode(false);
-        setHistory([bundle.pages]);
-        setHistoryIndex(0);
+      } finally {
+        if (!cancelled) {
+          setIsInitialBootstrapDone(true);
+        }
       }
     })();
     return () => {
@@ -806,11 +879,18 @@ export default function App() {
       rotation: Math.random() * 20 - 10,
       content,
       fontSize: type === "text" ? 32 : type === "sticker" ? 48 : undefined,
-      width: opts?.width ?? (isPolaroidSticker ? 210 : undefined),
-      height: opts?.height ?? (isPolaroidSticker ? 260 : undefined),
+      width:
+        opts?.width ??
+        (isPolaroidSticker ? 210 : type === "text" ? 260 : undefined),
+      height:
+        opts?.height ??
+        (isPolaroidSticker ? 260 : type === "text" ? 120 : undefined),
       color: "#333333",
       fontFamily: type === "text" ? "var(--font-handwriting)" : undefined,
       textEffect: type === "text" ? "none" : undefined,
+      fontWeight: type === "text" ? "normal" : undefined,
+      fontStyle: type === "text" ? "normal" : undefined,
+      textDecoration: type === "text" ? "none" : undefined,
     };
     updatePagesWithHistory(
       pages.map((p) => {
@@ -1137,47 +1217,55 @@ export default function App() {
 
   if (shouldLockStudio) {
     return (
-      <div
-        className="h-dvh font-sans flex items-center justify-center px-4"
-        style={{ backgroundColor: "#1f2937" }}
-      >
-        <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-          <h1 className="text-lg font-semibold text-stone-900">Нууц үг оруулна уу</h1>
-          <p className="mt-1 text-sm text-stone-600">
-            Үндсэн scrapbook редакторт нэвтрэхийн тулд нууц үгээ оруулна уу.
-          </p>
-          <input
-            type="password"
-            value={studioPasswordInput}
-            onChange={(e) => setStudioPasswordInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") unlockStudio();
-            }}
-            placeholder="Password"
-            className="mt-4 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-          />
-          {studioAuthError && (
-            <p className="mt-2 text-xs text-rose-600">{studioAuthError}</p>
-          )}
-          <button
-            type="button"
-            onClick={unlockStudio}
-            className="mt-4 w-full rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
-          >
-            Нэвтрэх
-          </button>
+      <>
+        <div
+          className="h-dvh font-sans flex items-center justify-center px-4"
+          style={{ backgroundColor: "#1f2937" }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <h1 className="text-lg font-semibold text-stone-900">
+              Нууц үг оруулна уу
+            </h1>
+            <p className="mt-1 text-sm text-stone-600">
+              Үндсэн scrapbook редакторт нэвтрэхийн тулд нууц үгээ оруулна уу.
+            </p>
+            <input
+              type="password"
+              value={studioPasswordInput}
+              onChange={(e) => setStudioPasswordInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") unlockStudio();
+              }}
+              placeholder="Password"
+              className="mt-4 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+            {studioAuthError && (
+              <p className="mt-2 text-xs text-rose-600">{studioAuthError}</p>
+            )}
+            <button
+              type="button"
+              onClick={unlockStudio}
+              className="mt-4 w-full rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
+            >
+              Нэвтрэх
+            </button>
+          </div>
         </div>
-      </div>
+        {isLoadingSceneVisible && (
+          <LoadingScene isExiting={isLoadingSceneExiting} />
+        )}
+      </>
     );
   }
 
   return (
-    <div
-      className="h-dvh font-sans flex flex-col overflow-hidden"
-      style={{ backgroundColor: appBackgroundColor }}
-    >
-      {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
-      <div className="flex-1 relative min-h-0">
+    <>
+      <div
+        className="h-dvh font-sans flex flex-col overflow-hidden"
+        style={{ backgroundColor: appBackgroundColor }}
+      >
+        {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
+        <div className="flex-1 relative min-h-0">
         {sharedViewMode && !isPureViewOnly && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 mx-2 max-w-lg text-center text-xs sm:text-sm text-white bg-white/15 rounded-xl py-2 px-3 sm:px-4 border border-white/25 shadow-lg">
             {!canEditSharedLink ? (
@@ -1525,45 +1613,47 @@ export default function App() {
             </div>
           </div>
         )}
-      </div>
-      <div
-        className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
-        aria-hidden
-      >
-        <div ref={ytHostRef} />
-      </div>
-      {showFinalizePrompt && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
-            <p className="text-base font-semibold text-stone-900 mb-2">
-              Анхааруулга
-            </p>
-            <p className="text-sm leading-6 text-stone-700">
-              Үүнийг буцаах боломжгүй, дахин засвар оруулах боломжгүй болно.
-              Та дууссандаа итгэлтэй байна уу?
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowFinalizePrompt(false)}
-                disabled={isFinalizing}
-                className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
-              >
-                Үгүй
-              </button>
-              <button
-                type="button"
-                onClick={() => void finalizeEditingNow()}
-                disabled={isFinalizing}
-                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
-              >
-                {isFinalizing ? "Түр хүлээнэ үү..." : "Тийм"}
-              </button>
+        </div>
+        <div
+          className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
+          aria-hidden
+        >
+          <div ref={ytHostRef} />
+        </div>
+        {showFinalizePrompt && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+              <p className="text-base font-semibold text-stone-900 mb-2">
+                Анхааруулга
+              </p>
+              <p className="text-sm leading-6 text-stone-700">
+                Үүнийг буцаах боломжгүй, дахин засвар оруулах боломжгүй болно.
+                Та дууссандаа итгэлтэй байна уу?
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFinalizePrompt(false)}
+                  disabled={isFinalizing}
+                  className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                >
+                  Үгүй
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void finalizeEditingNow()}
+                  disabled={isFinalizing}
+                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {isFinalizing ? "Түр хүлээнэ үү..." : "Тийм"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+      {isLoadingSceneVisible && <LoadingScene isExiting={isLoadingSceneExiting} />}
+    </>
   );
 }
 
@@ -1977,12 +2067,30 @@ function DraggableElement({
   const [isVideoVisible, setIsVideoVisible] = useState(false);
   const isPolaroid = element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
   const lastReportedAudibleRef = useRef(false);
-  const canResize = element.type === "image" || element.type === "video" || isPolaroid;
+  const canResize =
+    element.type === "image" ||
+    element.type === "video" ||
+    element.type === "text" ||
+    isPolaroid;
   const baseWidth = canResize
-    ? (element.width || (isPolaroid ? 210 : element.type === "video" ? 320 : 192))
+    ? (element.width ||
+      (isPolaroid
+        ? 210
+        : element.type === "video"
+          ? 320
+          : element.type === "text"
+            ? 260
+            : 192))
     : undefined;
   const baseHeight = canResize
-    ? (element.height || (isPolaroid ? 260 : element.type === "video" ? 180 : 192))
+    ? (element.height ||
+      (isPolaroid
+        ? 260
+        : element.type === "video"
+          ? 180
+          : element.type === "text"
+            ? 120
+            : 192))
     : undefined;
 
   const startResize = (
@@ -2211,8 +2319,18 @@ function DraggableElement({
           style={{
             color: element.color,
             fontSize: element.fontSize,
+            fontWeight: element.fontWeight || "normal",
+            fontStyle: element.fontStyle || "normal",
+            textDecoration: element.textDecoration || "none",
             fontFamily: element.fontFamily || "var(--font-handwriting)",
-            whiteSpace: "nowrap",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            width: element.width || 260,
+            minHeight: element.height || 120,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: isEditing ? "1px dashed rgba(0,0,0,0.25)" : "1px solid transparent",
+            background: "rgba(255,255,255,0.55)",
             textShadow:
               element.textEffect === "shadow"
                 ? "2px 2px 4px rgba(0,0,0,0.5)"

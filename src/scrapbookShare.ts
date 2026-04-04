@@ -21,6 +21,9 @@ export interface PageElement {
   height?: number;
   fontFamily?: string;
   textEffect?: string;
+  fontWeight?: "normal" | "bold";
+  fontStyle?: "normal" | "italic";
+  textDecoration?: "none" | "underline";
   frameImage?: string;
 }
 
@@ -75,6 +78,15 @@ function parseElement(raw: unknown): PageElement | null {
   if (typeof e.height === "number") out.height = e.height;
   if (typeof e.fontFamily === "string") out.fontFamily = e.fontFamily;
   if (typeof e.textEffect === "string") out.textEffect = e.textEffect;
+  if (e.fontWeight === "normal" || e.fontWeight === "bold") {
+    out.fontWeight = e.fontWeight;
+  }
+  if (e.fontStyle === "normal" || e.fontStyle === "italic") {
+    out.fontStyle = e.fontStyle;
+  }
+  if (e.textDecoration === "none" || e.textDecoration === "underline") {
+    out.textDecoration = e.textDecoration;
+  }
   if (typeof e.frameImage === "string") out.frameImage = e.frameImage;
   return out;
 }
