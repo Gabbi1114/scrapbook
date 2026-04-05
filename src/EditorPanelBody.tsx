@@ -15,6 +15,7 @@ import {
   Files,
   Plus,
   ChevronDown,
+  Pipette,
 } from "lucide-react";
 import type { ElementType, PageData, PageElement } from "./scrapbookShare";
 
@@ -89,6 +90,79 @@ type GifPick = {
   fullUrl: string;
   title: string;
 };
+type GraphicPick = {
+  id: string;
+  title: string;
+  previewUrl: string;
+  fullUrl: string;
+};
+
+type EyeDropperResult = { sRGBHex: string };
+type EyeDropperApi = { open: () => Promise<EyeDropperResult> };
+type EyeDropperCtor = new () => EyeDropperApi;
+
+const CUTE_ICON_PREFIXES = [
+  "fluent-emoji-flat",
+  "twemoji",
+  "noto",
+  "openmoji",
+  "fxemoji",
+] as const;
+
+const GRAPHIC_PRESETS: GraphicPick[] = [
+  {
+    id: "fluent-emoji-flat:ribbon",
+    title: "Ribbon",
+    previewUrl: "https://api.iconify.design/fluent-emoji-flat/ribbon.svg?height=96",
+    fullUrl: "https://api.iconify.design/fluent-emoji-flat/ribbon.svg?height=512",
+  },
+  {
+    id: "fluent-emoji-flat:red-heart",
+    title: "Heart",
+    previewUrl: "https://api.iconify.design/fluent-emoji-flat/red-heart.svg?height=96",
+    fullUrl: "https://api.iconify.design/fluent-emoji-flat/red-heart.svg?height=512",
+  },
+  {
+    id: "fluent-emoji-flat:sparkles",
+    title: "Sparkles",
+    previewUrl: "https://api.iconify.design/fluent-emoji-flat/sparkles.svg?height=96",
+    fullUrl: "https://api.iconify.design/fluent-emoji-flat/sparkles.svg?height=512",
+  },
+  {
+    id: "fluent-emoji-flat:camera",
+    title: "Camera",
+    previewUrl: "https://api.iconify.design/fluent-emoji-flat/camera.svg?height=96",
+    fullUrl: "https://api.iconify.design/fluent-emoji-flat/camera.svg?height=512",
+  },
+  {
+    id: "fluent-emoji-flat:party-popper",
+    title: "Party",
+    previewUrl: "https://api.iconify.design/fluent-emoji-flat/party-popper.svg?height=96",
+    fullUrl: "https://api.iconify.design/fluent-emoji-flat/party-popper.svg?height=512",
+  },
+  {
+    id: "fluent-emoji-flat:cherry-blossom",
+    title: "Flower",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/cherry-blossom.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/cherry-blossom.svg?height=512",
+  },
+  {
+    id: "fluent-emoji-flat:butterfly",
+    title: "Butterfly",
+    previewUrl: "https://api.iconify.design/fluent-emoji-flat/butterfly.svg?height=96",
+    fullUrl: "https://api.iconify.design/fluent-emoji-flat/butterfly.svg?height=512",
+  },
+  {
+    id: "fluent-emoji-flat:framed-picture",
+    title: "Frame",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/framed-picture.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/framed-picture.svg?height=512",
+  },
+];
 
 export function EditorPanelBody({
   selectedPageId,
@@ -147,6 +221,10 @@ export function EditorPanelBody({
   const [gifError, setGifError] = useState<string | null>(null);
   const [gifResults, setGifResults] = useState<GifPick[]>([]);
   const [gifDirectUrl, setGifDirectUrl] = useState("");
+  const [graphicQuery, setGraphicQuery] = useState("ribbon");
+  const [graphicLoading, setGraphicLoading] = useState(false);
+  const [graphicError, setGraphicError] = useState<string | null>(null);
+  const [graphicResults, setGraphicResults] = useState<GraphicPick[]>([]);
 
   const searchGifs = async () => {
     const q = gifQuery.trim();
@@ -259,6 +337,90 @@ export function EditorPanelBody({
     addGifFromUrl();
   };
 
+  const searchGraphics = async () => {
+    const q = graphicQuery.trim();
+    if (!q) return;
+    setGraphicLoading(true);
+    setGraphicError(null);
+    try {
+      let picks: GraphicPick[] = [];
+      const pixabayKey = (import.meta.env.VITE_PIXABAY_API_KEY || "").trim();
+      if (pixabayKey) {
+        const pixabayUrl =
+          `https://pixabay.com/api/?key=${encodeURIComponent(pixabayKey)}` +
+          `&q=${encodeURIComponent(q)}&image_type=vector&safesearch=true&per_page=24`;
+        const pixabayRes = await fetch(pixabayUrl);
+        if (pixabayRes.ok) {
+          const body = (await pixabayRes.json()) as {
+            hits?: Array<{
+              id?: number;
+              tags?: string;
+              previewURL?: string;
+              webformatURL?: string;
+              largeImageURL?: string;
+            }>;
+          };
+          picks = (body.hits || [])
+            .map((h) => {
+              const id = h.id ? `pixabay-${h.id}` : "";
+              const previewUrl = h.previewURL || h.webformatURL || "";
+              const fullUrl = h.largeImageURL || h.webformatURL || previewUrl;
+              if (!id || !previewUrl || !fullUrl) return null;
+              return {
+                id,
+                title: h.tags || "Graphic",
+                previewUrl,
+                fullUrl,
+              } satisfies GraphicPick;
+            })
+            .filter((v): v is GraphicPick => v !== null);
+        }
+      }
+      if (picks.length === 0) {
+        const res = await fetch(
+          `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=40`,
+        );
+        if (!res.ok) throw new Error(`Iconify HTTP ${res.status}`);
+        const body = (await res.json()) as { icons?: string[] };
+        picks = (body.icons || [])
+          .filter((id) => {
+            const prefix = id.split(":")[0] || "";
+            return CUTE_ICON_PREFIXES.includes(
+              prefix as (typeof CUTE_ICON_PREFIXES)[number],
+            );
+          })
+          .slice(0, 18)
+          .map((id) => {
+            const [prefix, name] = id.split(":");
+            if (!prefix || !name) return null;
+            const base = `https://api.iconify.design/${prefix}/${encodeURIComponent(name)}.svg`;
+            return {
+              id,
+              title: id,
+              previewUrl: `${base}?height=96`,
+              fullUrl: `${base}?height=512`,
+            } satisfies GraphicPick;
+          })
+          .filter((v): v is GraphicPick => v !== null);
+      }
+      setGraphicResults(picks);
+      if (picks.length === 0) {
+        setGraphicError("Илэрц олдсонгүй. Өөр үгээр хайгаад үзээрэй.");
+      }
+    } catch {
+      setGraphicError("Graphic хайлт амжилтгүй боллоо. Дахин оролдоно уу.");
+      setGraphicResults([]);
+    } finally {
+      setGraphicLoading(false);
+    }
+  };
+
+  const onGraphicQueryKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    void searchGraphics();
+  };
+
   if (!selectedPageId) {
     return (
       <p className="py-8 text-center text-sm text-stone-500">
@@ -287,6 +449,30 @@ export function EditorPanelBody({
                 : selectedPageBg === "bg-yellow-50"
                   ? "#fefce8"
                   : "#f5f5f4";
+  const graphicItems =
+    graphicResults.length > 0
+      ? graphicResults
+      : GRAPHIC_PRESETS;
+
+  const toHexInputValue = (v: string | undefined, fallback: string) =>
+    /^#[0-9a-f]{6}$/i.test(v || "") ? (v as string) : fallback;
+
+  const pickColorFromScreen = async (): Promise<string | null> => {
+    const ctor = (window as Window & { EyeDropper?: EyeDropperCtor })
+      .EyeDropper;
+    if (!ctor) {
+      window.alert(
+        "Таны төхөөрөмж дээр дэлгэцээс өнгө сонгох (eyedropper) дэмжигдэхгүй байна.",
+      );
+      return null;
+    }
+    try {
+      const result = await new ctor().open();
+      return /^#[0-9a-f]{6}$/i.test(result.sRGBHex) ? result.sRGBHex : null;
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -425,6 +611,55 @@ export function EditorPanelBody({
       />
       {openAccordion === "stickers" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
+          <div className="rounded-lg border border-stone-200 bg-white p-2">
+            <p className="mb-2 text-xs font-medium text-stone-600">
+              Хөөрхөн Graphic (Canva style)
+            </p>
+            <div className="mb-2 flex gap-2">
+              <input
+                type="text"
+                value={graphicQuery}
+                onChange={(e) => setGraphicQuery(e.target.value)}
+                onKeyDown={onGraphicQueryKeyDown}
+                placeholder="ribbon, bow, frame, heart, vinyl..."
+                className="min-w-0 flex-1 rounded-md border border-stone-200 px-2 py-1.5 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-400"
+              />
+              <button
+                type="button"
+                onClick={() => void searchGraphics()}
+                disabled={graphicLoading || !graphicQuery.trim()}
+                className="rounded-md bg-stone-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-900 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {graphicLoading ? "..." : "Хайх"}
+              </button>
+            </div>
+            {graphicError && (
+              <p className="mb-2 text-[11px] text-rose-600">{graphicError}</p>
+            )}
+            <div className="grid grid-cols-3 gap-1.5">
+              {graphicItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => addElement(selectedPageId, "image", item.fullUrl)}
+                  className="group overflow-hidden rounded-md border border-stone-200 bg-white hover:border-rose-300"
+                  title="Энэ graphic-ийг нэмэх"
+                >
+                  <img
+                    src={item.previewUrl}
+                    alt={item.title}
+                    className="h-16 w-full object-contain p-1 transition-transform group-hover:scale-105"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
+            </div>
+            {graphicItems.length === 0 && !graphicError && (
+              <p className="mt-2 text-[11px] text-stone-500">
+                Хайлт хийгээд graphic-уудаа гаргаж ирнэ.
+              </p>
+            )}
+          </div>
           <button
             type="button"
             onClick={() =>
@@ -467,21 +702,47 @@ export function EditorPanelBody({
         <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div>
             <p className="mb-2 text-xs text-stone-500">Дэвсгэр өнгө</p>
-            <input
-              type="color"
-              value={colorValue}
-              onChange={(e) => updatePageBackground(selectedPageId, e.target.value)}
-              className="h-10 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={colorValue}
+                onChange={(e) => updatePageBackground(selectedPageId, e.target.value)}
+                className="h-10 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const c = await pickColorFromScreen();
+                  if (c) updatePageBackground(selectedPageId, c);
+                }}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                title="Зурагнаас өнгө авах"
+              >
+                <Pipette size={16} />
+              </button>
+            </div>
           </div>
           <div>
             <p className="mb-2 text-xs text-stone-500">Үндсэн дэвсгэр өнгө</p>
-            <input
-              type="color"
-              value={appBackgroundColor}
-              onChange={(e) => setAppBackgroundColor(e.target.value)}
-              className="h-10 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={appBackgroundColor}
+                onChange={(e) => setAppBackgroundColor(e.target.value)}
+                className="h-10 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const c = await pickColorFromScreen();
+                  if (c) setAppBackgroundColor(c);
+                }}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                title="Зурагнаас өнгө авах"
+              >
+                <Pipette size={16} />
+              </button>
+            </div>
           </div>
           <div>
             <p className="mb-2 text-xs text-stone-500">Хээ</p>
@@ -562,6 +823,31 @@ export function EditorPanelBody({
               </div>
               <div>
                 <p className="mb-2 text-xs text-stone-500">Текстийн өнгө</p>
+                <div className="mb-2 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={toHexInputValue(selectedEl.color, "#333333")}
+                    onChange={(e) =>
+                      updateElement(selectedPageId, {
+                        ...selectedEl,
+                        color: e.target.value,
+                      })
+                    }
+                    className="h-9 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const c = await pickColorFromScreen();
+                      if (!c) return;
+                      updateElement(selectedPageId, { ...selectedEl, color: c });
+                    }}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                    title="Зурагнаас өнгө авах"
+                  >
+                    <Pipette size={14} />
+                  </button>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {[
                     "#333333",

@@ -923,6 +923,7 @@ export default function App() {
       fontWeight: type === "text" ? "normal" : undefined,
       fontStyle: type === "text" ? "normal" : undefined,
       textDecoration: type === "text" ? "none" : undefined,
+      textBackgroundColor: type === "text" ? "transparent" : undefined,
     };
     updatePagesWithHistory(
       pages.map((p) => {
@@ -2369,8 +2370,8 @@ function DraggableElement({
             minHeight: element.height || 120,
             padding: "10px 12px",
             borderRadius: 8,
-            border: isEditing ? "1px dashed rgba(0,0,0,0.25)" : "1px solid transparent",
-            background: "rgba(255,255,255,0.55)",
+            border: "none",
+            background: "transparent",
             textShadow:
               element.textEffect === "shadow"
                 ? "2px 2px 4px rgba(0,0,0,0.5)"

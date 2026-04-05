@@ -24,6 +24,7 @@ export interface PageElement {
   fontWeight?: "normal" | "bold";
   fontStyle?: "normal" | "italic";
   textDecoration?: "none" | "underline";
+  textBackgroundColor?: string;
   frameImage?: string;
 }
 
@@ -86,6 +87,9 @@ function parseElement(raw: unknown): PageElement | null {
   }
   if (e.textDecoration === "none" || e.textDecoration === "underline") {
     out.textDecoration = e.textDecoration;
+  }
+  if (typeof e.textBackgroundColor === "string") {
+    out.textBackgroundColor = e.textBackgroundColor;
   }
   if (typeof e.frameImage === "string") out.frameImage = e.frameImage;
   return out;
