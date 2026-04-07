@@ -593,6 +593,9 @@ export default function App() {
     const onTouchMove = (e: TouchEvent) => {
       // Keep browser pinch-zoom, but block one-finger page pull/swipe refresh.
       if (e.touches.length > 1) return;
+      const viewportScale = window.visualViewport?.scale ?? 1;
+      // When user is zoomed in, allow native drag/pan to move around the page.
+      if (viewportScale > 1.01) return;
       if (!shouldAllowNativeScroll(e.target)) {
         e.preventDefault();
       }
