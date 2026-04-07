@@ -591,26 +591,16 @@ export default function App() {
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      // Block pinch-zoom and browser swipe/pull refresh gestures on touch devices.
-      if (e.touches.length > 1) {
-        e.preventDefault();
-        return;
-      }
+      // Keep browser pinch-zoom, but block one-finger page pull/swipe refresh.
+      if (e.touches.length > 1) return;
       if (!shouldAllowNativeScroll(e.target)) {
         e.preventDefault();
       }
     };
-    const onGesture = (e: Event) => e.preventDefault();
 
     document.addEventListener("touchmove", onTouchMove, { passive: false });
-    document.addEventListener("gesturestart", onGesture);
-    document.addEventListener("gesturechange", onGesture);
-    document.addEventListener("gestureend", onGesture);
     return () => {
       document.removeEventListener("touchmove", onTouchMove);
-      document.removeEventListener("gesturestart", onGesture);
-      document.removeEventListener("gesturechange", onGesture);
-      document.removeEventListener("gestureend", onGesture);
     };
   }, []);
 
@@ -1338,7 +1328,7 @@ export default function App() {
   return (
     <>
       <div
-        className="h-dvh font-sans flex touch-none flex-col overflow-hidden"
+        className="h-dvh font-sans flex touch-auto flex-col overflow-hidden"
         style={{ backgroundColor: appBackgroundColor }}
       >
         {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
