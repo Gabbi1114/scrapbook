@@ -66,13 +66,42 @@ export function AccordionTrigger({
 
 const STICKERS = ["🌸", "✨", "💖", "🎀", "🧸", "🦋", "🎈", "🎨", "📸", "⭐"];
 const POLAROID_STICKER_TOKEN = "__POLAROID__";
-const PATTERNS = ["pattern-polka", "pattern-grid", "pattern-lines", ""];
+const PATTERNS: { name: string; value: string }[] = [
+  { name: "Цэгтэй", value: "pattern-polka" },
+  { name: "Дөрвөлжин", value: "pattern-grid" },
+  { name: "Тууш", value: "pattern-lines" },
+  { name: "Хоосон", value: "" },
+];
 const FONTS = [
   { name: "Гар бичмэл", value: "var(--font-handwriting)" },
   { name: "Санс сериф", value: "var(--font-sans)" },
   { name: "Pacifico", value: "var(--font-pacifico)" },
   { name: "Amatic", value: "var(--font-amatic)" },
   { name: "Indie", value: "var(--font-indie)" },
+  { name: "SYSTEM", value: "var(--font-system)" },
+  { name: "Meteor", value: "var(--font-meteor)" },
+  { name: "Playfair-Bd", value: "var(--font-playfair-display)" },
+  { name: "RubikWetPaint-RG", value: "var(--font-rubik-wet-paint)" },
+  { name: "FlicFlac", value: "var(--font-flic-flac)" },
+  { name: "Kabeltouw", value: "var(--font-kabeltouw)" },
+  { name: "Ralfine-RG", value: "var(--font-ralfine-rg)" },
+  { name: "Ralfine-BD", value: "var(--font-ralfine-bd)" },
+  { name: "OpenSerif-RG", value: "var(--font-open-serif-rg)" },
+  { name: "HarmonyOSCn-It", value: "var(--font-harmony-cn-it)" },
+  { name: "PT Sans", value: "var(--font-pt-sans)" },
+  { name: "OpenSerif-Bd", value: "var(--font-open-serif-bd)" },
+  { name: "HarmonyOS-Bdlt", value: "var(--font-harmony-bdlt)" },
+  { name: "Roboto-BlkCn", value: "var(--font-roboto-condensed)" },
+  { name: "Nunito", value: "var(--font-sans)" },
+  { name: "Древесина", value: "var(--font-drevensina)" },
+  { name: "Holz", value: "var(--font-holz)" },
+  { name: "PlayfairDisplay", value: "var(--font-playfair-display)" },
+  { name: "Hand", value: "var(--font-hand)" },
+  { name: "Italic", value: "var(--font-italic-custom)" },
+  { name: "Playfair Display", value: "var(--font-playfair-display)" },
+  { name: "Oswald", value: "var(--font-oswald)" },
+  { name: "Robert", value: "var(--font-robert)" },
+  { name: "Inter-BlkCn", value: "var(--font-inter)" },
 ];
 const TEXT_EFFECTS = [
   { name: "Байхгүй", value: "none" },
@@ -113,32 +142,42 @@ const GRAPHIC_PRESETS: GraphicPick[] = [
   {
     id: "fluent-emoji-flat:ribbon",
     title: "Ribbon",
-    previewUrl: "https://api.iconify.design/fluent-emoji-flat/ribbon.svg?height=96",
-    fullUrl: "https://api.iconify.design/fluent-emoji-flat/ribbon.svg?height=512",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/ribbon.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/ribbon.svg?height=512",
   },
   {
     id: "fluent-emoji-flat:red-heart",
     title: "Heart",
-    previewUrl: "https://api.iconify.design/fluent-emoji-flat/red-heart.svg?height=96",
-    fullUrl: "https://api.iconify.design/fluent-emoji-flat/red-heart.svg?height=512",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/red-heart.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/red-heart.svg?height=512",
   },
   {
     id: "fluent-emoji-flat:sparkles",
     title: "Sparkles",
-    previewUrl: "https://api.iconify.design/fluent-emoji-flat/sparkles.svg?height=96",
-    fullUrl: "https://api.iconify.design/fluent-emoji-flat/sparkles.svg?height=512",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/sparkles.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/sparkles.svg?height=512",
   },
   {
     id: "fluent-emoji-flat:camera",
     title: "Camera",
-    previewUrl: "https://api.iconify.design/fluent-emoji-flat/camera.svg?height=96",
-    fullUrl: "https://api.iconify.design/fluent-emoji-flat/camera.svg?height=512",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/camera.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/camera.svg?height=512",
   },
   {
     id: "fluent-emoji-flat:party-popper",
     title: "Party",
-    previewUrl: "https://api.iconify.design/fluent-emoji-flat/party-popper.svg?height=96",
-    fullUrl: "https://api.iconify.design/fluent-emoji-flat/party-popper.svg?height=512",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/party-popper.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/party-popper.svg?height=512",
   },
   {
     id: "fluent-emoji-flat:cherry-blossom",
@@ -151,8 +190,10 @@ const GRAPHIC_PRESETS: GraphicPick[] = [
   {
     id: "fluent-emoji-flat:butterfly",
     title: "Butterfly",
-    previewUrl: "https://api.iconify.design/fluent-emoji-flat/butterfly.svg?height=96",
-    fullUrl: "https://api.iconify.design/fluent-emoji-flat/butterfly.svg?height=512",
+    previewUrl:
+      "https://api.iconify.design/fluent-emoji-flat/butterfly.svg?height=96",
+    fullUrl:
+      "https://api.iconify.design/fluent-emoji-flat/butterfly.svg?height=512",
   },
   {
     id: "fluent-emoji-flat:framed-picture",
@@ -432,27 +473,25 @@ export function EditorPanelBody({
   const selectedEl = pages
     .flatMap((p) => p.elements)
     .find((e) => e.id === selectedElementId);
-  const selectedPageBg = pages.find((p) => p.id === selectedPageId)?.background || "";
-  const colorValue =
-    /^#[0-9a-f]{6}$/i.test(selectedPageBg)
-      ? selectedPageBg
-      : selectedPageBg === "bg-rose-200"
-        ? "#fecdd3"
-        : selectedPageBg === "bg-orange-50"
-          ? "#fff7ed"
-          : selectedPageBg === "bg-blue-50"
-            ? "#eff6ff"
-            : selectedPageBg === "bg-green-50"
-              ? "#f0fdf4"
-              : selectedPageBg === "bg-purple-50"
-                ? "#faf5ff"
-                : selectedPageBg === "bg-yellow-50"
-                  ? "#fefce8"
-                  : "#f5f5f4";
+  const selectedPageBg =
+    pages.find((p) => p.id === selectedPageId)?.background || "";
+  const colorValue = /^#[0-9a-f]{6}$/i.test(selectedPageBg)
+    ? selectedPageBg
+    : selectedPageBg === "bg-rose-200"
+      ? "#fecdd3"
+      : selectedPageBg === "bg-orange-50"
+        ? "#fff7ed"
+        : selectedPageBg === "bg-blue-50"
+          ? "#eff6ff"
+          : selectedPageBg === "bg-green-50"
+            ? "#f0fdf4"
+            : selectedPageBg === "bg-purple-50"
+              ? "#faf5ff"
+              : selectedPageBg === "bg-yellow-50"
+                ? "#fefce8"
+                : "#f5f5f4";
   const graphicItems =
-    graphicResults.length > 0
-      ? graphicResults
-      : GRAPHIC_PRESETS;
+    graphicResults.length > 0 ? graphicResults : GRAPHIC_PRESETS;
 
   const toHexInputValue = (v: string | undefined, fallback: string) =>
     /^#[0-9a-f]{6}$/i.test(v || "") ? (v as string) : fallback;
@@ -488,12 +527,10 @@ export function EditorPanelBody({
           <button
             type="button"
             onClick={() => {
-              addElement(
-                selectedPageId,
-                "text",
-                "Текстээ энд бичнэ үү",
-                { width: 260, height: 120 },
-              );
+              addElement(selectedPageId, "text", "Текстээ энд бичнэ үү", {
+                width: 260,
+                height: 120,
+              });
             }}
             className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50"
           >
@@ -556,7 +593,7 @@ export function EditorPanelBody({
                 Нэмэх
               </button>
             </div>
-              <p className="mb-2 text-xs font-medium text-stone-600">
+            <p className="mb-2 text-xs font-medium text-stone-600">
               GIF хайх (GIPHY / Tenor)
             </p>
             <div className="mb-2 flex gap-2">
@@ -577,14 +614,18 @@ export function EditorPanelBody({
                 {gifLoading ? "..." : "Хайх"}
               </button>
             </div>
-            {gifError && <p className="mb-2 text-[11px] text-rose-600">{gifError}</p>}
+            {gifError && (
+              <p className="mb-2 text-[11px] text-rose-600">{gifError}</p>
+            )}
             {gifResults.length > 0 && (
               <div className="grid grid-cols-3 gap-1.5">
                 {gifResults.map((gif) => (
                   <button
                     key={gif.id}
                     type="button"
-                    onClick={() => addElement(selectedPageId, "image", gif.fullUrl)}
+                    onClick={() =>
+                      addElement(selectedPageId, "image", gif.fullUrl)
+                    }
                     className="group overflow-hidden rounded-md border border-stone-200 bg-stone-100 hover:border-rose-300"
                     title="Энэ GIF-ийг нэмэх"
                   >
@@ -613,7 +654,7 @@ export function EditorPanelBody({
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div className="rounded-lg border border-stone-200 bg-white p-2">
             <p className="mb-2 text-xs font-medium text-stone-600">
-              Хөөрхөн Graphic (Canva style)
+              Хөөрхөн Graphic
             </p>
             <div className="mb-2 flex gap-2">
               <input
@@ -641,7 +682,9 @@ export function EditorPanelBody({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => addElement(selectedPageId, "image", item.fullUrl)}
+                  onClick={() =>
+                    addElement(selectedPageId, "image", item.fullUrl)
+                  }
                   className="group overflow-hidden rounded-md border border-stone-200 bg-white hover:border-rose-300"
                   title="Энэ graphic-ийг нэмэх"
                 >
@@ -679,9 +722,7 @@ export function EditorPanelBody({
               <button
                 key={sticker}
                 type="button"
-                onClick={() =>
-                  addElement(selectedPageId, "sticker", sticker)
-                }
+                onClick={() => addElement(selectedPageId, "sticker", sticker)}
                 className="p-1 text-2xl transition-transform hover:scale-125"
               >
                 {sticker}
@@ -706,7 +747,9 @@ export function EditorPanelBody({
               <input
                 type="color"
                 value={colorValue}
-                onChange={(e) => updatePageBackground(selectedPageId, e.target.value)}
+                onChange={(e) =>
+                  updatePageBackground(selectedPageId, e.target.value)
+                }
                 className="h-10 w-full cursor-pointer rounded-lg border border-stone-200 bg-white p-1"
               />
               <button
@@ -747,14 +790,14 @@ export function EditorPanelBody({
           <div>
             <p className="mb-2 text-xs text-stone-500">Хээ</p>
             <div className="grid grid-cols-2 gap-2">
-              {PATTERNS.map((pattern) => (
+              {PATTERNS.map(({ name, value }) => (
                 <button
-                  key={pattern}
+                  key={value || "none"}
                   type="button"
-                  onClick={() => updatePagePattern(selectedPageId, pattern)}
-                  className={`rounded-lg border px-3 py-2 text-xs ${pages.find((p) => p.id === selectedPageId)?.pattern === pattern ? "border-rose-500 bg-rose-50 text-rose-700" : "border-stone-200 bg-white text-stone-600"}`}
+                  onClick={() => updatePagePattern(selectedPageId, value)}
+                  className={`rounded-lg border px-3 py-2 text-xs ${pages.find((p) => p.id === selectedPageId)?.pattern === value ? "border-rose-500 bg-rose-50 text-rose-700" : "border-stone-200 bg-white text-stone-600"}`}
                 >
-                  {pattern || "Байхгүй"}
+                  {name}
                 </button>
               ))}
             </div>
@@ -772,7 +815,9 @@ export function EditorPanelBody({
       {openAccordion === "bookEffects" && (
         <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div>
-            <p className="mb-2 text-xs text-stone-500">Арын хөгжим (YouTube линк)</p>
+            <p className="mb-2 text-xs text-stone-500">
+              Арын хөгжим (YouTube линк)
+            </p>
             <input
               type="url"
               value={backgroundMusicUrl}
@@ -781,8 +826,7 @@ export function EditorPanelBody({
               className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
             <p className="mt-1 text-[11px] text-stone-500">
-              Эхний товшилт/хүрэлтээс хойш тоглоно. Үндсэн дуу 50%, видеоны дууг
-              нээхэд 20% болно.
+              Youtube-ээс дууны линкийг хуулж оруулна уу.
             </p>
             <button
               type="button"
@@ -840,7 +884,10 @@ export function EditorPanelBody({
                     onClick={async () => {
                       const c = await pickColorFromScreen();
                       if (!c) return;
-                      updateElement(selectedPageId, { ...selectedEl, color: c });
+                      updateElement(selectedPageId, {
+                        ...selectedEl,
+                        color: c,
+                      });
                     }}
                     className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
                     title="Зурагнаас өнгө авах"
@@ -873,9 +920,7 @@ export function EditorPanelBody({
               <div>
                 <p className="mb-2 text-xs text-stone-500">Фонтын төрөл</p>
                 <select
-                  value={
-                    selectedEl.fontFamily || "var(--font-handwriting)"
-                  }
+                  value={selectedEl.fontFamily || "var(--font-handwriting)"}
                   onChange={(e) =>
                     updateElement(selectedPageId, {
                       ...selectedEl,
@@ -1084,9 +1129,7 @@ export function EditorPanelBody({
 
           <button
             type="button"
-            onClick={() =>
-              deleteElement(selectedPageId, selectedElementId)
-            }
+            onClick={() => deleteElement(selectedPageId, selectedElementId)}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-50 py-2 px-4 text-red-600 hover:bg-red-100"
           >
             <Trash2 size={16} />

@@ -44,10 +44,7 @@ import {
   BOOK_STAGE_WIDTH,
   useBookStageScale,
 } from "./bookStage";
-import {
-  EditorPanelBody,
-  type EditorAccordionId,
-} from "./EditorPanelBody";
+import { EditorPanelBody, type EditorAccordionId } from "./EditorPanelBody";
 
 declare global {
   interface Window {
@@ -336,14 +333,17 @@ export default function App() {
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("share")
       : null;
-  const studioRootShareId =
-    (import.meta.env.VITE_STUDIO_ROOT_SHARE_ID || "studio-root").trim();
+  const studioRootShareId = (
+    import.meta.env.VITE_STUDIO_ROOT_SHARE_ID || "studio-root"
+  ).trim();
   const studioPassword = (import.meta.env.VITE_STUDIO_PASSWORD || "").trim();
   const [studioPasswordInput, setStudioPasswordInput] = useState("");
   const [studioAuthError, setStudioAuthError] = useState<string | null>(null);
   const [studioUnlocked, setStudioUnlocked] = useState(() => {
     if (typeof window === "undefined") return true;
-    const isShareLink = new URLSearchParams(window.location.search).has("share");
+    const isShareLink = new URLSearchParams(window.location.search).has(
+      "share",
+    );
     if (isShareLink) return true;
     if (!studioPassword) return true;
     return window.sessionStorage.getItem(STUDIO_UNLOCK_KEY) === "1";
@@ -431,7 +431,8 @@ export default function App() {
 
   useEffect(() => {
     const isLoaderReady = isInitialBootstrapDone && isWindowLoaded;
-    if (!isLoaderReady || !isLoadingSceneVisible || isLoadingSceneExiting) return;
+    if (!isLoaderReady || !isLoadingSceneVisible || isLoadingSceneExiting)
+      return;
     setLoadingProgress(100);
     const startExit = window.setTimeout(() => {
       setIsLoadingSceneExiting(true);
@@ -556,8 +557,7 @@ export default function App() {
     const onResize = () => {
       setEditorPlacement((p) => {
         const w = editorPanelWidthPx(window.innerWidth);
-        const h =
-          editorPanelRef.current?.getBoundingClientRect().height ?? 480;
+        const h = editorPanelRef.current?.getBoundingClientRect().height ?? 480;
         return {
           left: Math.min(
             Math.max(8, p.left),
@@ -586,14 +586,8 @@ export default function App() {
       const pw = rect?.width ?? 320;
       const ph = rect?.height ?? 400;
       setEditorPlacement({
-        left: Math.min(
-          window.innerWidth - pw - 8,
-          Math.max(8, orig.left + dx),
-        ),
-        top: Math.min(
-          window.innerHeight - ph - 8,
-          Math.max(8, orig.top + dy),
-        ),
+        left: Math.min(window.innerWidth - pw - 8, Math.max(8, orig.left + dx)),
+        top: Math.min(window.innerHeight - ph - 8, Math.max(8, orig.top + dy)),
       });
     };
     const up = () => {
@@ -625,8 +619,7 @@ export default function App() {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w < 8 || h < 8) return;
-      const s =
-        Math.min(w / BOOK_STAGE_WIDTH, h / BOOK_STAGE_HEIGHT) * 0.98;
+      const s = Math.min(w / BOOK_STAGE_WIDTH, h / BOOK_STAGE_HEIGHT) * 0.98;
       setStageScale(Math.max(0.08, Math.min(s, 4)));
     };
     const ro = new ResizeObserver(measure);
@@ -675,7 +668,9 @@ export default function App() {
 
   useEffect(() => {
     if (sharedViewMode && currentShareId) {
-      const deadlineMs = shareEditUntilIso ? Date.parse(shareEditUntilIso) : NaN;
+      const deadlineMs = shareEditUntilIso
+        ? Date.parse(shareEditUntilIso)
+        : NaN;
       const expired =
         shareEditUntilIso !== null &&
         Number.isFinite(deadlineMs) &&
@@ -774,9 +769,7 @@ export default function App() {
     if (resolved.kind === "hash" || resolved.kind === "server") {
       try {
         await navigator.clipboard.writeText(resolved.url);
-        setShareHint(
-          "Линк хууллаа — мессеж эсвэл и-мэйлээр явуулаарай.",
-        );
+        setShareHint("Линк хууллаа — мессеж эсвэл и-мэйлээр явуулаарай.");
         window.setTimeout(() => setShareHint(null), 5000);
       } catch {
         window.prompt("Энэ линкийг хуулна уу:", resolved.url);
@@ -855,7 +848,13 @@ export default function App() {
       window.setTimeout(() => setShareHint(null), 1200);
     }, 700);
     return () => window.clearTimeout(id);
-  }, [backgroundMusicUrl, canSaveToServer, currentShareId, pages, sharedViewMode]);
+  }, [
+    backgroundMusicUrl,
+    canSaveToServer,
+    currentShareId,
+    pages,
+    sharedViewMode,
+  ]);
 
   const turnNext = () => {
     if (currentLeaf < totalLeaves) {
@@ -1209,7 +1208,9 @@ export default function App() {
     }
     const targetWidth = 320;
     const ratio =
-      mediaSize && mediaSize.height > 0 ? mediaSize.width / mediaSize.height : 16 / 9;
+      mediaSize && mediaSize.height > 0
+        ? mediaSize.width / mediaSize.height
+        : 16 / 9;
     const targetHeight = Math.max(80, Math.round(targetWidth / ratio));
     addElement(pageId, "video", uploaded.url, {
       width: targetWidth,
@@ -1297,127 +1298,106 @@ export default function App() {
   return (
     <>
       <div
-        className="h-dvh font-sans flex flex-col overflow-hidden"
+        className="h-dvh font-sans flex touch-manipulation flex-col overflow-hidden"
         style={{ backgroundColor: appBackgroundColor }}
       >
         {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
         <div className="flex-1 relative min-h-0">
-        {sharedViewMode && !isPureViewOnly && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 mx-2 max-w-lg text-center text-xs sm:text-sm text-white bg-white/15 rounded-xl py-2 px-3 sm:px-4 border border-white/25 shadow-lg">
-            {!canEditSharedLink ? (
-              <p className="mb-2 text-white/95">
-                {isShareEditExpired
-                  ? "Энэ линкийн засварлах хугацаа дууссан"
-                  : "Энэ хуваалцсан линк зөвхөн харах горимтой"}
-                {isShareEditExpired && Number.isFinite(shareEditDeadlineMs)
-                  ? ` (${new Date(shareEditDeadlineMs).toLocaleString()})`
-                  : ""}
-                . Скрапбүүк яг хадгалсан хэвээр үлдэнэ.
-              </p>
-            ) : (
-              <p className="mb-2 text-white/95">
-                Энэ хувийн линкийг энэ хуудсан дээр шууд засах боломжтой
-                {shareEditUntilIso && Number.isFinite(shareEditDeadlineMs) ? (
-                  <>
-                    {" "}
-                    хүртэл{" "}
-                    <span className="font-semibold whitespace-nowrap">
-                      {new Date(shareEditDeadlineMs).toLocaleString()}
-                    </span>
-                    .
-                  </>
-                ) : (
-                  "."
+          {sharedViewMode && !isPureViewOnly && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 mx-2 max-w-lg text-center text-xs sm:text-sm text-white bg-white/15 rounded-xl py-2 px-3 sm:px-4 border border-white/25 shadow-lg">
+              {!canEditSharedLink ? (
+                <p className="mb-2 text-white/95">
+                  {isShareEditExpired
+                    ? "Энэ линкийн засварлах хугацаа дууссан"
+                    : "Энэ хуваалцсан линк зөвхөн харах горимтой"}
+                  {isShareEditExpired && Number.isFinite(shareEditDeadlineMs)
+                    ? ` (${new Date(shareEditDeadlineMs).toLocaleString()})`
+                    : ""}
+                  . Скрапбүүк яг хадгалсан хэвээр үлдэнэ.
+                </p>
+              ) : (
+                <p className="mb-2 text-white/95">
+                  Засвар хийх боломжит хугацаа
+                  {shareEditUntilIso && Number.isFinite(shareEditDeadlineMs) ? (
+                    <>
+                      {" "}
+                      <span className="font-semibold whitespace-nowrap">
+                        {new Date(shareEditDeadlineMs).toLocaleString()}
+                      </span>{" "}
+                      хүртэл.
+                    </>
+                  ) : (
+                    "."
+                  )}{" "}
+                  Өөрчлөлтүүд энэ линк дээр автоматаар хадгалагдана.
+                </p>
+              )}
+              <div className="flex flex-wrap justify-center gap-2">
+                {showPublishLinkUi && (
+                  <button
+                    type="button"
+                    onClick={() => void copyShareLink()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white text-stone-800 text-xs font-medium hover:bg-stone-100"
+                  >
+                    <Link2 size={14} />
+                    Линк хуулах
+                  </button>
                 )}
-                {" "}
-                Өөрчлөлтүүд энэ линк дээр автоматаар хадгалагдана.
-              </p>
-            )}
-            <div className="flex flex-wrap justify-center gap-2">
-              {showPublishLinkUi && (
-                <button
-                  type="button"
-                  onClick={() => void copyShareLink()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white text-stone-800 text-xs font-medium hover:bg-stone-100"
-                >
-                  <Link2 size={14} />
-                  Линк хуулах
-                </button>
-              )}
-              {canEditSharedLink && (
-                <button
-                  type="button"
-                  onClick={() => setShowFinalizePrompt(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-600 text-white text-xs font-medium hover:bg-rose-700"
-                >
-                  Засвар дуусгах
-                </button>
-              )}
+                {canEditSharedLink && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFinalizePrompt(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-600 text-white text-xs font-medium hover:bg-rose-700"
+                  >
+                    Засвар дуусгах
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <main className="absolute inset-0 flex flex-col min-h-0 min-w-0 overflow-hidden p-2 sm:p-3">
-          {/* Row: nav + book fills height minus bottom bar space */}
-          <div className="flex flex-1 min-h-0 w-full items-center justify-center gap-1 sm:gap-2">
-            <button
-              type="button"
-              onClick={turnPrev}
-              disabled={currentLeaf === 0}
-              className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
-              aria-label="Өмнөх хуудас"
-            >
-              <ChevronLeft size={26} />
-            </button>
-
-            <BookStageScaleContext.Provider value={stageScale}>
-              <div
-                ref={stageViewportRef}
-                className="flex min-h-0 min-w-0 flex-1 h-full max-h-full items-center justify-center overflow-visible"
+          <main className="absolute inset-0 flex flex-col min-h-0 min-w-0 overflow-hidden p-2 sm:p-3">
+            {/* Row: nav + book fills height minus bottom bar space */}
+            <div className="flex flex-1 min-h-0 w-full items-center justify-center gap-1 sm:gap-2">
+              <button
+                type="button"
+                onClick={turnPrev}
+                disabled={currentLeaf === 0}
+                className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
+                aria-label="Өмнөх хуудас"
               >
+                <ChevronLeft size={26} />
+              </button>
+
+              <BookStageScaleContext.Provider value={stageScale}>
                 <div
-                  className="relative shrink-0 overflow-visible"
-                  style={{
-                    width: BOOK_STAGE_WIDTH * stageScale,
-                    height: BOOK_STAGE_HEIGHT * stageScale,
-                  }}
+                  ref={stageViewportRef}
+                  className="flex min-h-0 min-w-0 flex-1 h-full max-h-full items-center justify-center overflow-visible"
                 >
                   <div
-                    className="absolute left-0 top-0 perspective-[1500px] preserve-3d"
+                    className="relative shrink-0 overflow-visible"
                     style={{
-                      width: BOOK_STAGE_WIDTH,
-                      height: BOOK_STAGE_HEIGHT,
-                      transform: `scale(${stageScale})`,
-                      transformOrigin: "top left",
-                    }}
-                    onClick={() => {
-                      if (!isEditing) setSelectedElementId(null);
+                      width: BOOK_STAGE_WIDTH * stageScale,
+                      height: BOOK_STAGE_HEIGHT * stageScale,
                     }}
                   >
-                    {isEditing ? (
-                      <EditingSpread
-                        pages={pages}
-                        visibleLeftPageId={visibleLeftPageId}
-                        visibleRightPageId={visibleRightPageId}
-                        selectedElementId={selectedElementId}
-                        setSelectedElementId={setSelectedElementId}
-                        updateElement={updateElement}
-                        onVideoAudibleChange={setVideoAudible}
-                        onDropImageIntoPolaroid={dropImageIntoPolaroid}
-                        isVideoMuted={isVideoMuted}
-                        setVideoMuted={setVideoMuted}
-                        selectedPageId={selectedPageId}
-                        setSelectedPageId={setSelectedPageId}
-                      />
-                    ) : (
-                      leaves.map((leaf, i) => (
-                        <FlipPage
-                          key={i}
-                          leaf={leaf}
-                          i={i}
-                          currentLeaf={currentLeaf}
-                          totalLeaves={totalLeaves}
-                          isEditing={false}
+                    <div
+                      className="absolute left-0 top-0 perspective-[1500px] preserve-3d"
+                      style={{
+                        width: BOOK_STAGE_WIDTH,
+                        height: BOOK_STAGE_HEIGHT,
+                        transform: `scale(${stageScale})`,
+                        transformOrigin: "top left",
+                      }}
+                      onClick={() => {
+                        if (!isEditing) setSelectedElementId(null);
+                      }}
+                    >
+                      {isEditing ? (
+                        <EditingSpread
+                          pages={pages}
+                          visibleLeftPageId={visibleLeftPageId}
+                          visibleRightPageId={visibleRightPageId}
                           selectedElementId={selectedElementId}
                           setSelectedElementId={setSelectedElementId}
                           updateElement={updateElement}
@@ -1427,94 +1407,225 @@ export default function App() {
                           setVideoMuted={setVideoMuted}
                           selectedPageId={selectedPageId}
                           setSelectedPageId={setSelectedPageId}
-                          bendIntensity={bendIntensity}
                         />
-                      ))
-                    )}
+                      ) : (
+                        leaves.map((leaf, i) => (
+                          <FlipPage
+                            key={i}
+                            leaf={leaf}
+                            i={i}
+                            currentLeaf={currentLeaf}
+                            totalLeaves={totalLeaves}
+                            isEditing={false}
+                            selectedElementId={selectedElementId}
+                            setSelectedElementId={setSelectedElementId}
+                            updateElement={updateElement}
+                            onVideoAudibleChange={setVideoAudible}
+                            onDropImageIntoPolaroid={dropImageIntoPolaroid}
+                            isVideoMuted={isVideoMuted}
+                            setVideoMuted={setVideoMuted}
+                            selectedPageId={selectedPageId}
+                            setSelectedPageId={setSelectedPageId}
+                            bendIntensity={bendIntensity}
+                          />
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </BookStageScaleContext.Provider>
+              </BookStageScaleContext.Provider>
 
-            <button
-              type="button"
-              onClick={turnNext}
-              disabled={currentLeaf === totalLeaves}
-              className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
-              aria-label="Дараагийн хуудас"
-            >
-              <ChevronRight size={26} />
-            </button>
-          </div>
-        </main>
+              <button
+                type="button"
+                onClick={turnNext}
+                disabled={currentLeaf === totalLeaves}
+                className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
+                aria-label="Дараагийн хуудас"
+              >
+                <ChevronRight size={26} />
+              </button>
+            </div>
+          </main>
 
-        {/* Bottom Floating Controls */}
-        {!isPureViewOnly && (
-          <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50 max-w-[95vw]">
-          {sharedViewMode && (
-            <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
-              Үлдсэн зай: {storageLeftMb.toFixed(2)} MB
-            </p>
-          )}
-          {shareHint && (
-            <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
-              {shareHint}
-            </p>
-          )}
-          <div className="bg-white/10 backdrop-blur-md px-6 py-3 rounded-full flex items-center gap-4 shadow-xl border border-white/20">
-            {!sharedViewMode && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                  title={isEditing ? "Урьдчилж харах" : "Засах"}
-                >
-                  {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
-                </button>
-
-                {isEditing && (
+          {/* Bottom Floating Controls */}
+          {!isPureViewOnly && (
+            <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50 max-w-[95vw]">
+              {sharedViewMode && (
+                <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
+                  Үлдсэн зай: {storageLeftMb.toFixed(2)} MB
+                </p>
+              )}
+              {shareHint && (
+                <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
+                  {shareHint}
+                </p>
+              )}
+              <div className="bg-white/10 backdrop-blur-md px-6 py-3 rounded-full flex items-center gap-4 shadow-xl border border-white/20">
+                {!sharedViewMode && (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(!isEditing)}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
+                      title={isEditing ? "Урьдчилж харах" : "Засах"}
+                    >
+                      {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
+                    </button>
+
+                    {isEditing && (
+                      <>
+                        <div className="w-px h-6 bg-white/30 mx-1" />
+                        <button
+                          type="button"
+                          onClick={undo}
+                          disabled={historyIndex === 0}
+                          className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Буцаах"
+                        >
+                          <Undo2 size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={redo}
+                          disabled={historyIndex === history.length - 1}
+                          className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Дахин хийх"
+                        >
+                          <Redo2 size={18} />
+                        </button>
+                      </>
+                    )}
+
+                    {showPublishLinkUi && (
+                      <>
+                        <div className="w-px h-6 bg-white/30 mx-1" />
+                        <button
+                          type="button"
+                          onClick={() => void copyShareLink()}
+                          className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
+                          title="Энэ скрапбүүкийг явуулах линк хуулах"
+                        >
+                          <Link2 size={18} />
+                        </button>
+                      </>
+                    )}
+
                     <div className="w-px h-6 bg-white/30 mx-1" />
                     <button
                       type="button"
-                      onClick={undo}
-                      disabled={historyIndex === 0}
-                      className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Буцаах"
-                    >
-                      <Undo2 size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={redo}
-                      disabled={historyIndex === history.length - 1}
-                      className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Дахин хийх"
-                    >
-                      <Redo2 size={18} />
-                    </button>
-                  </>
-                )}
-
-                {showPublishLinkUi && (
-                  <>
-                    <div className="w-px h-6 bg-white/30 mx-1" />
-                    <button
-                      type="button"
-                      onClick={() => void copyShareLink()}
+                      onClick={() => {
+                        const newPages = [...pages];
+                        const backCover = newPages.pop();
+                        const pageNum = newPages.length;
+                        newPages.push({
+                          id: `page-${pageNum}`,
+                          background: "bg-stone-50",
+                          pattern: "",
+                          elements: [],
+                        });
+                        newPages.push({
+                          id: `page-${pageNum + 1}`,
+                          background: "bg-stone-50",
+                          pattern: "",
+                          elements: [],
+                        });
+                        if (backCover) newPages.push(backCover);
+                        updatePagesWithHistory(newPages);
+                      }}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
-                      title="Энэ скрапбүүкийг явуулах линк хуулах"
+                      title="Хуудас нэмэх"
                     >
-                      <Link2 size={18} />
+                      <Plus size={20} />
                     </button>
                   </>
                 )}
+                {sharedViewMode && canEditSharedLink && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(!isEditing)}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
+                      title={isEditing ? "Урьдчилж харах" : "Засах"}
+                    >
+                      {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
+                    </button>
+                    {isEditing && (
+                      <>
+                        <div className="w-px h-6 bg-white/30 mx-1" />
+                        <button
+                          type="button"
+                          onClick={undo}
+                          disabled={historyIndex === 0}
+                          className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Буцаах"
+                        >
+                          <Undo2 size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={redo}
+                          disabled={historyIndex === history.length - 1}
+                          className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Дахин хийх"
+                        >
+                          <Redo2 size={18} />
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+                {sharedViewMode && showPublishLinkUi && (
+                  <button
+                    type="button"
+                    onClick={() => void copyShareLink()}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-stone-800 text-sm font-medium hover:bg-stone-100"
+                  >
+                    <Link2 size={16} />
+                    Линк хуулах
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
-                <div className="w-px h-6 bg-white/30 mx-1" />
-                <button
-                  type="button"
-                  onClick={() => {
+          {/* Editor panel: draggable + accordion */}
+          {isEditing && (!sharedViewMode || canEditSharedLink) && (
+            <div
+              ref={editorPanelRef}
+              className="fixed z-30 flex max-h-[min(calc(100dvh-16px),900px)] w-[min(10rem,calc(50vw-12px))] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl md:w-[min(20rem,calc(100vw-16px))]"
+              style={{ left: editorPlacement.left, top: editorPlacement.top }}
+            >
+              <div
+                className="flex shrink-0 cursor-grab touch-none select-none items-center gap-1.5 border-b border-stone-200 bg-stone-100 px-2 py-1.5 active:cursor-grabbing md:gap-2 md:px-3 md:py-2"
+                onPointerDown={startEditorDrag}
+              >
+                <GripVertical className="size-4 text-stone-400 md:size-[18px]" />
+                <span className="text-xs font-semibold text-stone-700 md:text-sm">
+                  Засвар
+                </span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 md:p-4">
+                <EditorPanelBody
+                  selectedPageId={selectedPageId}
+                  selectedElementId={selectedElementId}
+                  pages={pages}
+                  openAccordion={openAccordion}
+                  setOpenAccordion={setOpenAccordion}
+                  appBackgroundColor={appBackgroundColor}
+                  setAppBackgroundColor={setAppBackgroundColor}
+                  backgroundMusicUrl={backgroundMusicUrl}
+                  setBackgroundMusicUrl={setBackgroundMusicUrl}
+                  saveMusicLink={saveMusicLinkNow}
+                  addElement={addElement}
+                  handleImageUpload={handleImageUpload}
+                  handleVideoUpload={handleVideoUpload}
+                  updatePageBackground={updatePageBackground}
+                  updatePagePattern={updatePagePattern}
+                  updateElement={updateElement}
+                  updatePagesWithHistory={updatePagesWithHistory}
+                  deleteElement={deleteElement}
+                  removePage={removePage}
+                  addPagesPair={() => {
                     const newPages = [...pages];
                     const backCover = newPages.pop();
                     const pageNum = newPages.length;
@@ -1533,122 +1644,10 @@ export default function App() {
                     if (backCover) newPages.push(backCover);
                     updatePagesWithHistory(newPages);
                   }}
-                  className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
-                  title="Хуудас нэмэх"
-                >
-                  <Plus size={20} />
-                </button>
-              </>
-            )}
-            {sharedViewMode && canEditSharedLink && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                  title={isEditing ? "Урьдчилж харах" : "Засах"}
-                >
-                  {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
-                </button>
-                {isEditing && (
-                  <>
-                    <div className="w-px h-6 bg-white/30 mx-1" />
-                    <button
-                      type="button"
-                      onClick={undo}
-                      disabled={historyIndex === 0}
-                      className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Буцаах"
-                    >
-                      <Undo2 size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={redo}
-                      disabled={historyIndex === history.length - 1}
-                      className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Дахин хийх"
-                    >
-                      <Redo2 size={18} />
-                    </button>
-                  </>
-                )}
-              </>
-            )}
-            {sharedViewMode && showPublishLinkUi && (
-              <button
-                type="button"
-                onClick={() => void copyShareLink()}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-stone-800 text-sm font-medium hover:bg-stone-100"
-              >
-                <Link2 size={16} />
-                Линк хуулах
-              </button>
-            )}
-          </div>
-          </div>
-        )}
-
-        {/* Editor panel: draggable + accordion */}
-        {isEditing && (!sharedViewMode || canEditSharedLink) && (
-          <div
-            ref={editorPanelRef}
-            className="fixed z-30 flex max-h-[min(calc(100dvh-16px),900px)] w-[min(10rem,calc(50vw-12px))] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl md:w-[min(20rem,calc(100vw-16px))]"
-            style={{ left: editorPlacement.left, top: editorPlacement.top }}
-          >
-            <div
-              className="flex shrink-0 cursor-grab touch-none select-none items-center gap-1.5 border-b border-stone-200 bg-stone-100 px-2 py-1.5 active:cursor-grabbing md:gap-2 md:px-3 md:py-2"
-              onPointerDown={startEditorDrag}
-            >
-              <GripVertical className="size-4 text-stone-400 md:size-[18px]" />
-              <span className="text-xs font-semibold text-stone-700 md:text-sm">
-                Засвар
-              </span>
+                />
+              </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 md:p-4">
-              <EditorPanelBody
-                selectedPageId={selectedPageId}
-                selectedElementId={selectedElementId}
-                pages={pages}
-                openAccordion={openAccordion}
-                setOpenAccordion={setOpenAccordion}
-                appBackgroundColor={appBackgroundColor}
-                setAppBackgroundColor={setAppBackgroundColor}
-                backgroundMusicUrl={backgroundMusicUrl}
-                setBackgroundMusicUrl={setBackgroundMusicUrl}
-                saveMusicLink={saveMusicLinkNow}
-                addElement={addElement}
-                handleImageUpload={handleImageUpload}
-                handleVideoUpload={handleVideoUpload}
-                updatePageBackground={updatePageBackground}
-                updatePagePattern={updatePagePattern}
-                updateElement={updateElement}
-                updatePagesWithHistory={updatePagesWithHistory}
-                deleteElement={deleteElement}
-                removePage={removePage}
-                addPagesPair={() => {
-                  const newPages = [...pages];
-                  const backCover = newPages.pop();
-                  const pageNum = newPages.length;
-                  newPages.push({
-                    id: `page-${pageNum}`,
-                    background: "bg-stone-50",
-                    pattern: "",
-                    elements: [],
-                  });
-                  newPages.push({
-                    id: `page-${pageNum + 1}`,
-                    background: "bg-stone-50",
-                    pattern: "",
-                    elements: [],
-                  });
-                  if (backCover) newPages.push(backCover);
-                  updatePagesWithHistory(newPages);
-                }}
-              />
-            </div>
-          </div>
-        )}
+          )}
         </div>
         <div
           className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
@@ -1718,7 +1717,11 @@ function EditingSpread({
   visibleRightPageId: string | null;
   selectedElementId: string | null;
   setSelectedElementId: (id: string | null) => void;
-  updateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
+  updateElement: (
+    pageId: string,
+    el: PageElement,
+    saveHistory?: boolean,
+  ) => void;
   onVideoAudibleChange: (id: string, audible: boolean) => void;
   onDropImageIntoPolaroid: (
     pageId: string,
@@ -2024,7 +2027,11 @@ function PageContent({
   isEditing: boolean;
   selectedElementId: string | null;
   onSelectElement: (id: string | null) => void;
-  onUpdateElement: (pageId: string, el: PageElement, saveHistory?: boolean) => void;
+  onUpdateElement: (
+    pageId: string,
+    el: PageElement,
+    saveHistory?: boolean,
+  ) => void;
   onVideoAudibleChange?: (id: string, audible: boolean) => void;
   onDropImageIntoPolaroid: (
     pageId: string,
@@ -2042,7 +2049,9 @@ function PageContent({
   return (
     <div
       className={`w-full h-full relative ${useClassBackground ? page.background : ""} ${page.pattern} transition-all ${isActive && isEditing ? "ring-inset ring-4 ring-rose-400" : ""}`}
-      style={useClassBackground ? undefined : { backgroundColor: page.background }}
+      style={
+        useClassBackground ? undefined : { backgroundColor: page.background }
+      }
       onClick={(e) => {
         if (isEditing) {
           onSelectPage();
@@ -2106,7 +2115,8 @@ function DraggableElement({
   const [isTransforming, setIsTransforming] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
-  const isPolaroid = element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
+  const isPolaroid =
+    element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
   const lastReportedAudibleRef = useRef(false);
   const canResize =
     element.type === "image" ||
@@ -2114,24 +2124,24 @@ function DraggableElement({
     element.type === "text" ||
     isPolaroid;
   const baseWidth = canResize
-    ? (element.width ||
+    ? element.width ||
       (isPolaroid
         ? 210
         : element.type === "video"
           ? 320
           : element.type === "text"
             ? 260
-            : 192))
+            : 192)
     : undefined;
   const baseHeight = canResize
-    ? (element.height ||
+    ? element.height ||
       (isPolaroid
         ? 260
         : element.type === "video"
           ? 180
           : element.type === "text"
             ? 120
-            : 192))
+            : 192)
     : undefined;
 
   const startResize = (
@@ -2161,7 +2171,8 @@ function DraggableElement({
       if (isCornerHandle) {
         const sx = dir.includes("e") ? dx : -dx;
         const sy = dir.includes("s") ? dy : -dy;
-        const dominant = Math.abs(sx / ow) > Math.abs(sy / oh) ? sx / ow : sy / oh;
+        const dominant =
+          Math.abs(sx / ow) > Math.abs(sy / oh) ? sx / ow : sy / oh;
         const scale = Math.max(minScale, 1 + dominant);
         nw = Math.max(minSize, ow * scale);
         nh = Math.max(minSize, oh * scale);
@@ -2322,19 +2333,17 @@ function DraggableElement({
           const fh = next.height || 260;
           const frameCenterX = next.x + fw / 2;
           const frameCenterY = next.y + fh / 2;
-          const targetImage = [...pageElements]
-            .reverse()
-            .find((img) => {
-              if (img.type !== "image" || img.id === element.id) return false;
-              const iw = img.width || 192;
-              const ih = img.height || 192;
-              return (
-                frameCenterX >= img.x &&
-                frameCenterX <= img.x + iw &&
-                frameCenterY >= img.y &&
-                frameCenterY <= img.y + ih
-              );
-            });
+          const targetImage = [...pageElements].reverse().find((img) => {
+            if (img.type !== "image" || img.id === element.id) return false;
+            const iw = img.width || 192;
+            const ih = img.height || 192;
+            return (
+              frameCenterX >= img.x &&
+              frameCenterX <= img.x + iw &&
+              frameCenterY >= img.y &&
+              frameCenterY <= img.y + ih
+            );
+          });
           if (targetImage) {
             onDropImageIntoPolaroid(targetImage, element.id);
             return;
@@ -2385,8 +2394,8 @@ function DraggableElement({
           {element.content}
         </div>
       )}
-      {element.type === "sticker" && (
-        element.content === POLAROID_STICKER_TOKEN ? (
+      {element.type === "sticker" &&
+        (element.content === POLAROID_STICKER_TOKEN ? (
           <div
             className="rounded-sm border border-[#e6dfd5] bg-[#fbf8f1] shadow-[0_12px_18px_rgba(0,0,0,0.20)]"
             style={{
@@ -2413,8 +2422,7 @@ function DraggableElement({
           <div style={{ fontSize: element.fontSize, lineHeight: 1 }}>
             {element.content}
           </div>
-        )
-      )}
+        ))}
       {element.type === "image" && (
         <img
           src={element.content}
