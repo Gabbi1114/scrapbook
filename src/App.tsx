@@ -1432,7 +1432,7 @@ export default function App() {
                     }}
                   >
                     <div
-                      className={`absolute left-0 top-0 ${!isEditing && preferLiteEffects ? "" : "perspective-[1500px] preserve-3d"}`}
+                      className="absolute left-0 top-0 perspective-[1500px] preserve-3d"
                       style={{
                         width: BOOK_STAGE_WIDTH,
                         height: BOOK_STAGE_HEIGHT,
@@ -1458,17 +1458,6 @@ export default function App() {
                           selectedPageId={selectedPageId}
                           setSelectedPageId={setSelectedPageId}
                         />
-                      ) : preferLiteEffects ? (
-                        <FlatPreviewSpread
-                          pages={pages}
-                          visibleLeftPageId={visibleLeftPageId}
-                          visibleRightPageId={visibleRightPageId}
-                          updateElement={updateElement}
-                          onVideoAudibleChange={setVideoAudible}
-                          onDropImageIntoPolaroid={dropImageIntoPolaroid}
-                          isVideoMuted={isVideoMuted}
-                          setVideoMuted={setVideoMuted}
-                        />
                       ) : (
                         leaves.map((leaf, i) => (
                           <FlipPage
@@ -1488,6 +1477,7 @@ export default function App() {
                             selectedPageId={selectedPageId}
                             setSelectedPageId={setSelectedPageId}
                             bendIntensity={bendIntensity}
+                            liteMode={preferLiteEffects}
                           />
                         ))
                       )}
@@ -1892,86 +1882,6 @@ function EditingSpread({
   );
 }
 
-function FlatPreviewSpread({
-  pages,
-  visibleLeftPageId,
-  visibleRightPageId,
-  updateElement,
-  onVideoAudibleChange,
-  onDropImageIntoPolaroid,
-  isVideoMuted,
-  setVideoMuted,
-}: {
-  pages: PageData[];
-  visibleLeftPageId: string | null;
-  visibleRightPageId: string | null;
-  updateElement: (
-    pageId: string,
-    el: PageElement,
-    saveHistory?: boolean,
-  ) => void;
-  onVideoAudibleChange: (id: string, audible: boolean) => void;
-  onDropImageIntoPolaroid: (
-    pageId: string,
-    imageEl: PageElement,
-    frameId: string,
-  ) => void;
-  isVideoMuted: (id: string) => boolean;
-  setVideoMuted: (id: string, muted: boolean) => void;
-}) {
-  const left = visibleLeftPageId
-    ? pages.find((p) => p.id === visibleLeftPageId)
-    : undefined;
-  const right = visibleRightPageId
-    ? pages.find((p) => p.id === visibleRightPageId)
-    : undefined;
-  const shell =
-    "shadow-[0_2px_10px_rgba(0,0,0,0.1)] overflow-hidden border border-black/10";
-
-  return (
-    <div className="absolute inset-0 z-10 flex items-stretch">
-      {left && (
-        <div
-          className={`w-1/2 shrink-0 h-full rounded-l-2xl rounded-r-sm border-r-black/20 ${shell}`}
-        >
-          <PageContent
-            page={left}
-            isEditing={false}
-            selectedElementId={null}
-            onSelectElement={() => {}}
-            onUpdateElement={updateElement}
-            onVideoAudibleChange={onVideoAudibleChange}
-            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
-            isVideoMuted={isVideoMuted}
-            setVideoMuted={setVideoMuted}
-            isActive={false}
-            onSelectPage={() => {}}
-          />
-        </div>
-      )}
-      {right && (
-        <div
-          className={`w-1/2 shrink-0 h-full rounded-r-2xl rounded-l-sm border-l-black/20 ${shell}`}
-        >
-          <PageContent
-            page={right}
-            isEditing={false}
-            selectedElementId={null}
-            onSelectElement={() => {}}
-            onUpdateElement={updateElement}
-            onVideoAudibleChange={onVideoAudibleChange}
-            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
-            isVideoMuted={isVideoMuted}
-            setVideoMuted={setVideoMuted}
-            isActive={false}
-            onSelectPage={() => {}}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function FlipPage({
   leaf,
   i,
@@ -1988,14 +1898,15 @@ function FlipPage({
   selectedPageId,
   setSelectedPageId,
   bendIntensity = 1.2,
+  liteMode = false,
 }: any) {
   const isFlipped = i < currentLeaf;
 
   const rotateYTarget = useMotionValue(isFlipped ? -180 : 0);
   // Slightly softer spring for a "heavy paper" feel
   const rotateY = useSpring(rotateYTarget, {
-    stiffness: 55,
-    damping: 16,
+    stiffness: liteMode ? 50 : 55,
+    damping: liteMode ? 20 : 16,
     mass: 1,
     restDelta: 0.01,
   });
@@ -2005,21 +1916,24 @@ function FlipPage({
 
   // Lift the page up during the flip to prevent z-fighting and add realism
   // Also offset based on index to create a physical stack of pages
-  const z = useTransform(rotateY, [-180, -90, 0], [i * 1.5, 50, -i * 1.5], {
-    clamp: true,
-  });
+  const z = useTransform(
+    rotateY,
+    [-180, -90, 0],
+    liteMode ? [i * 0.8, 16, -i * 0.8] : [i * 1.5, 50, -i * 1.5],
+    { clamp: true },
+  );
 
   // Paper bending effect (droop) - more subtle and realistic
   const rotateXTarget = useTransform(
     rotateY,
     [-180, -90, 0],
-    [0, bendIntensity, 0],
+    liteMode ? [0, 0, 0] : [0, bendIntensity, 0],
     { clamp: true },
   );
   const rotateZTarget = useTransform(
     rotateY,
     [-180, -90, 0],
-    [0, -bendIntensity, 0],
+    liteMode ? [0, 0, 0] : [0, -bendIntensity, 0],
     { clamp: true },
   );
 
@@ -2036,17 +1950,28 @@ function FlipPage({
   });
 
   // Dynamic lighting/shading to simulate curvature
-  const frontLightingOpacity = useTransform(rotateY, [-90, 0], [0.5, 0], {
-    clamp: true,
-  });
-  const backLightingOpacity = useTransform(rotateY, [-180, -90], [0, 0.5], {
-    clamp: true,
-  });
+  const frontLightingOpacity = useTransform(
+    rotateY,
+    [-90, 0],
+    liteMode ? [0, 0] : [0.5, 0],
+    {
+      clamp: true,
+    },
+  );
+  const backLightingOpacity = useTransform(
+    rotateY,
+    [-180, -90],
+    liteMode ? [0, 0] : [0, 0.5],
+    { clamp: true },
+  );
 
   // Drop shadow moving across the book
-  const shadowOpacity = useTransform(rotateY, [-180, -90, 0], [0, 0.25, 0], {
-    clamp: true,
-  });
+  const shadowOpacity = useTransform(
+    rotateY,
+    [-180, -90, 0],
+    liteMode ? [0, 0, 0] : [0, 0.25, 0],
+    { clamp: true },
+  );
   const shadowX = useTransform(
     rotateY,
     [-180, -90, 0],
@@ -2063,16 +1988,17 @@ function FlipPage({
 
   return (
     <>
-      {/* Moving Drop Shadow */}
-      <motion.div
-        className="absolute top-4 left-1/2 w-[45%] h-[95%] bg-black blur-2xl pointer-events-none rounded-full"
-        style={{
-          opacity: shadowOpacity,
-          x: shadowX,
-          scale: shadowScale,
-          zIndex: shadowZIndex,
-        }}
-      />
+      {!liteMode && (
+        <motion.div
+          className="absolute top-4 left-1/2 w-[45%] h-[95%] bg-black blur-2xl pointer-events-none rounded-full"
+          style={{
+            opacity: shadowOpacity,
+            x: shadowX,
+            scale: shadowScale,
+            zIndex: shadowZIndex,
+          }}
+        />
+      )}
 
       <motion.div
         className={`absolute top-0 left-1/2 w-1/2 h-full origin-left preserve-3d ${!isInteractive ? "pointer-events-none" : ""}`}
@@ -2106,15 +2032,16 @@ function FlipPage({
           {/* Static spine shadow */}
           <div className="absolute inset-y-0 left-0 pointer-events-none bg-gradient-to-r from-black/10 to-transparent w-12 z-50" />
 
-          {/* Dynamic bending shadow */}
-          <motion.div
-            className="absolute inset-0 pointer-events-none z-50"
-            style={{
-              background:
-                "linear-gradient(to right, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 30%, rgba(255,255,255,0.4) 100%)",
-              opacity: frontLightingOpacity,
-            }}
-          />
+          {!liteMode && (
+            <motion.div
+              className="absolute inset-0 pointer-events-none z-50"
+              style={{
+                background:
+                  "linear-gradient(to right, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 30%, rgba(255,255,255,0.4) 100%)",
+                opacity: frontLightingOpacity,
+              }}
+            />
+          )}
         </motion.div>
 
         {/* Back Page (Left side when flipped) */}
@@ -2139,15 +2066,16 @@ function FlipPage({
           {/* Static spine shadow */}
           <div className="absolute inset-y-0 right-0 pointer-events-none bg-gradient-to-l from-black/10 to-transparent w-12 z-50" />
 
-          {/* Dynamic bending shadow */}
-          <motion.div
-            className="absolute inset-0 pointer-events-none z-50"
-            style={{
-              background:
-                "linear-gradient(to left, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 30%, rgba(255,255,255,0.4) 100%)",
-              opacity: backLightingOpacity,
-            }}
-          />
+          {!liteMode && (
+            <motion.div
+              className="absolute inset-0 pointer-events-none z-50"
+              style={{
+                background:
+                  "linear-gradient(to left, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 30%, rgba(255,255,255,0.4) 100%)",
+                opacity: backLightingOpacity,
+              }}
+            />
+          )}
         </motion.div>
       </motion.div>
     </>
