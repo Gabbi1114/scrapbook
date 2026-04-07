@@ -574,6 +574,46 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    const hasTouch =
+      window.matchMedia("(pointer: coarse)").matches ||
+      "ontouchstart" in window ||
+      navigator.maxTouchPoints > 0;
+    if (!hasTouch) return;
+
+    const shouldAllowNativeScroll = (target: EventTarget | null) => {
+      let el = target instanceof HTMLElement ? target : null;
+      while (el && el !== document.body) {
+        if (el.dataset.allowNativeScroll === "true") return true;
+        el = el.parentElement;
+      }
+      return false;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      // Block pinch-zoom and browser swipe/pull refresh gestures on touch devices.
+      if (e.touches.length > 1) {
+        e.preventDefault();
+        return;
+      }
+      if (!shouldAllowNativeScroll(e.target)) {
+        e.preventDefault();
+      }
+    };
+    const onGesture = (e: Event) => e.preventDefault();
+
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("gesturestart", onGesture);
+    document.addEventListener("gesturechange", onGesture);
+    document.addEventListener("gestureend", onGesture);
+    return () => {
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("gesturestart", onGesture);
+      document.removeEventListener("gesturechange", onGesture);
+      document.removeEventListener("gestureend", onGesture);
+    };
+  }, []);
+
   const startEditorDrag = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     const orig = editorPlacementRef.current;
@@ -1298,7 +1338,7 @@ export default function App() {
   return (
     <>
       <div
-        className="h-dvh font-sans flex touch-manipulation flex-col overflow-hidden"
+        className="h-dvh font-sans flex touch-none flex-col overflow-hidden"
         style={{ backgroundColor: appBackgroundColor }}
       >
         {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
@@ -1604,7 +1644,10 @@ export default function App() {
                   Засвар
                 </span>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 md:p-4">
+              <div
+                className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-2 md:p-4"
+                data-allow-native-scroll="true"
+              >
                 <EditorPanelBody
                   selectedPageId={selectedPageId}
                   selectedElementId={selectedElementId}
