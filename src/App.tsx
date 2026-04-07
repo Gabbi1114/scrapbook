@@ -275,6 +275,14 @@ const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
 const LOADING_SCENE_EXIT_MS = 700;
 const LOADING_PROGRESS_SETTLE_MS = 220;
 
+function isIosWebkitDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
 function LoadingScene({
   isExiting,
   progress,
@@ -401,10 +409,19 @@ export default function App() {
   const ytPlayerRef = useRef<any>(null);
   const ytHostRef = useRef<HTMLDivElement | null>(null);
   const hasAudioGestureRef = useRef(false);
+  const preferLiteEffects = isIosWebkitDevice();
 
   useEffect(() => {
     editorPlacementRef.current = editorPlacement;
   }, [editorPlacement]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("is-ios", preferLiteEffects);
+    return () => {
+      document.body.classList.remove("is-ios");
+    };
+  }, [preferLiteEffects]);
 
   useEffect(() => {
     if (isWindowLoaded) return;
@@ -1318,7 +1335,7 @@ export default function App() {
             </button>
           </div>
         </div>
-        {isLoadingSceneVisible && (
+        {!preferLiteEffects && isLoadingSceneVisible && (
           <LoadingScene
             isExiting={isLoadingSceneExiting}
             progress={loadingProgress}
@@ -1415,7 +1432,7 @@ export default function App() {
                     }}
                   >
                     <div
-                      className="absolute left-0 top-0 perspective-[1500px] preserve-3d"
+                      className={`absolute left-0 top-0 ${!isEditing && preferLiteEffects ? "" : "perspective-[1500px] preserve-3d"}`}
                       style={{
                         width: BOOK_STAGE_WIDTH,
                         height: BOOK_STAGE_HEIGHT,
@@ -1440,6 +1457,17 @@ export default function App() {
                           setVideoMuted={setVideoMuted}
                           selectedPageId={selectedPageId}
                           setSelectedPageId={setSelectedPageId}
+                        />
+                      ) : preferLiteEffects ? (
+                        <FlatPreviewSpread
+                          pages={pages}
+                          visibleLeftPageId={visibleLeftPageId}
+                          visibleRightPageId={visibleRightPageId}
+                          updateElement={updateElement}
+                          onVideoAudibleChange={setVideoAudible}
+                          onDropImageIntoPolaroid={dropImageIntoPolaroid}
+                          isVideoMuted={isVideoMuted}
+                          setVideoMuted={setVideoMuted}
                         />
                       ) : (
                         leaves.map((leaf, i) => (
@@ -1723,7 +1751,7 @@ export default function App() {
           </div>
         )}
       </div>
-      {isLoadingSceneVisible && (
+      {!preferLiteEffects && isLoadingSceneVisible && (
         <LoadingScene
           isExiting={isLoadingSceneExiting}
           progress={loadingProgress}
@@ -1857,6 +1885,86 @@ function EditingSpread({
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === right.id}
             onSelectPage={() => setSelectedPageId(right.id)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlatPreviewSpread({
+  pages,
+  visibleLeftPageId,
+  visibleRightPageId,
+  updateElement,
+  onVideoAudibleChange,
+  onDropImageIntoPolaroid,
+  isVideoMuted,
+  setVideoMuted,
+}: {
+  pages: PageData[];
+  visibleLeftPageId: string | null;
+  visibleRightPageId: string | null;
+  updateElement: (
+    pageId: string,
+    el: PageElement,
+    saveHistory?: boolean,
+  ) => void;
+  onVideoAudibleChange: (id: string, audible: boolean) => void;
+  onDropImageIntoPolaroid: (
+    pageId: string,
+    imageEl: PageElement,
+    frameId: string,
+  ) => void;
+  isVideoMuted: (id: string) => boolean;
+  setVideoMuted: (id: string, muted: boolean) => void;
+}) {
+  const left = visibleLeftPageId
+    ? pages.find((p) => p.id === visibleLeftPageId)
+    : undefined;
+  const right = visibleRightPageId
+    ? pages.find((p) => p.id === visibleRightPageId)
+    : undefined;
+  const shell =
+    "shadow-[0_2px_10px_rgba(0,0,0,0.1)] overflow-hidden border border-black/10";
+
+  return (
+    <div className="absolute inset-0 z-10 flex items-stretch">
+      {left && (
+        <div
+          className={`w-1/2 shrink-0 h-full rounded-l-2xl rounded-r-sm border-r-black/20 ${shell}`}
+        >
+          <PageContent
+            page={left}
+            isEditing={false}
+            selectedElementId={null}
+            onSelectElement={() => {}}
+            onUpdateElement={updateElement}
+            onVideoAudibleChange={onVideoAudibleChange}
+            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
+            isVideoMuted={isVideoMuted}
+            setVideoMuted={setVideoMuted}
+            isActive={false}
+            onSelectPage={() => {}}
+          />
+        </div>
+      )}
+      {right && (
+        <div
+          className={`w-1/2 shrink-0 h-full rounded-r-2xl rounded-l-sm border-l-black/20 ${shell}`}
+        >
+          <PageContent
+            page={right}
+            isEditing={false}
+            selectedElementId={null}
+            onSelectElement={() => {}}
+            onUpdateElement={updateElement}
+            onVideoAudibleChange={onVideoAudibleChange}
+            onDropImageIntoPolaroid={onDropImageIntoPolaroid}
+            isVideoMuted={isVideoMuted}
+            setVideoMuted={setVideoMuted}
+            isActive={false}
+            onSelectPage={() => {}}
           />
         </div>
       )}
@@ -2446,6 +2554,8 @@ function DraggableElement({
                 <img
                   src={element.frameImage}
                   alt="polaroid"
+                  loading="lazy"
+                  decoding="async"
                   className="h-full w-full rounded-[2px] border border-black/10 object-cover"
                   draggable={false}
                 />
@@ -2463,6 +2573,8 @@ function DraggableElement({
         <img
           src={element.content}
           alt="scrapbook"
+          loading="lazy"
+          decoding="async"
           className="object-cover"
           style={{
             width: element.width || 192,
