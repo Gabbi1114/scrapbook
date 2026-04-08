@@ -274,6 +274,8 @@ function toFriendlyFinalizeError(rawError: string): string {
 const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
 const LOADING_SCENE_EXIT_MS = 700;
 const LOADING_PROGRESS_SETTLE_MS = 220;
+const BOOTSTRAP_NETWORK_TIMEOUT_MS = 7000;
+const BOOTSTRAP_MAX_WAIT_MS = 9000;
 
 function isIosWebkitDevice(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -281,6 +283,24 @@ function isIosWebkitDevice(): boolean {
     /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
   );
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = window.setTimeout(() => {
+      reject(new Error(`Timed out after ${ms}ms`));
+    }, ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(id);
+        resolve(value);
+      },
+      (err) => {
+        window.clearTimeout(id);
+        reject(err);
+      },
+    );
+  });
 }
 
 function LoadingScene({
@@ -331,7 +351,7 @@ function LoadingScene({
 export default function App() {
   const [isInitialBootstrapDone, setIsInitialBootstrapDone] = useState(false);
   const [isWindowLoaded, setIsWindowLoaded] = useState(
-    typeof document !== "undefined" && document.readyState === "complete",
+    typeof document !== "undefined" && document.readyState !== "loading",
   );
   const [isLoadingSceneVisible, setIsLoadingSceneVisible] = useState(true);
   const [isLoadingSceneExiting, setIsLoadingSceneExiting] = useState(false);
@@ -426,8 +446,12 @@ export default function App() {
   useEffect(() => {
     if (isWindowLoaded) return;
     const onLoaded = () => setIsWindowLoaded(true);
+    window.addEventListener("DOMContentLoaded", onLoaded, { once: true });
     window.addEventListener("load", onLoaded, { once: true });
-    return () => window.removeEventListener("load", onLoaded);
+    return () => {
+      window.removeEventListener("DOMContentLoaded", onLoaded);
+      window.removeEventListener("load", onLoaded);
+    };
   }, [isWindowLoaded]);
 
   useEffect(() => {
@@ -740,10 +764,18 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get("share");
     let cancelled = false;
+    const bootstrapFailSafe = window.setTimeout(() => {
+      if (!cancelled) {
+        setIsInitialBootstrapDone(true);
+      }
+    }, BOOTSTRAP_MAX_WAIT_MS);
     (async () => {
       try {
         if (sid) {
-          const bundle = await fetchSharedBundleById(sid);
+          const bundle = await withTimeout(
+            fetchSharedBundleById(sid),
+            BOOTSTRAP_NETWORK_TIMEOUT_MS,
+          );
           if (cancelled) return;
           if (bundle) {
             setCurrentShareId(sid);
@@ -759,12 +791,15 @@ export default function App() {
         }
         if (!canPublishShareLinks()) return;
         if (!studioRootShareId) return;
-        const ensured = await ensureSharedPagesById(
-          studioRootShareId,
-          initialPagesRef.current,
+        const ensured = await withTimeout(
+          ensureSharedPagesById(studioRootShareId, initialPagesRef.current),
+          BOOTSTRAP_NETWORK_TIMEOUT_MS,
         );
         if (cancelled || !ensured.ok) return;
-        const bundle = await fetchSharedBundleById(studioRootShareId);
+        const bundle = await withTimeout(
+          fetchSharedBundleById(studioRootShareId),
+          BOOTSTRAP_NETWORK_TIMEOUT_MS,
+        );
         if (cancelled) return;
         if (bundle) {
           setCurrentShareId(studioRootShareId);
@@ -777,6 +812,7 @@ export default function App() {
           setHistoryIndex(0);
         }
       } finally {
+        window.clearTimeout(bootstrapFailSafe);
         if (!cancelled) {
           setIsInitialBootstrapDone(true);
         }
@@ -784,6 +820,7 @@ export default function App() {
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(bootstrapFailSafe);
     };
   }, [studioRootShareId]);
 
@@ -1335,7 +1372,7 @@ export default function App() {
             </button>
           </div>
         </div>
-        {!preferLiteEffects && isLoadingSceneVisible && (
+        {isLoadingSceneVisible && (
           <LoadingScene
             isExiting={isLoadingSceneExiting}
             progress={loadingProgress}
@@ -1741,7 +1778,7 @@ export default function App() {
           </div>
         )}
       </div>
-      {!preferLiteEffects && isLoadingSceneVisible && (
+      {isLoadingSceneVisible && (
         <LoadingScene
           isExiting={isLoadingSceneExiting}
           progress={loadingProgress}
