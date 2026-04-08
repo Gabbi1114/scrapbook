@@ -777,17 +777,43 @@ export default function App() {
   const stageViewportRef = useRef<HTMLDivElement>(null);
   const [stageScale, setStageScale] = useState(1);
 
-  // In-app pinch zoom (replaces browser zoom to prevent iOS crash)
+  // In-app pinch zoom + pan (replaces browser zoom to prevent iOS crash)
   const [userZoom, setUserZoom] = useState(1);
   const userZoomRef = useRef(1);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef(1);
   const lastTapTimeRef = useRef(0);
 
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const panOffsetRef = useRef({ x: 0, y: 0 });
+  const panStartTouchRef = useRef<{ x: number; y: number } | null>(null);
+  const panStartOffsetRef = useRef({ x: 0, y: 0 });
+
   const clampZoom = (z: number) => Math.min(4, Math.max(1, z));
+
+  const clampPan = (x: number, y: number, z: number) => {
+    const el = stageViewportRef.current;
+    if (!el || z <= 1.01) return { x: 0, y: 0 };
+    const maxX = ((z - 1) * el.clientWidth) / 2;
+    const maxY = ((z - 1) * el.clientHeight) / 2;
+    return {
+      x: Math.min(maxX, Math.max(-maxX, x)),
+      y: Math.min(maxY, Math.max(-maxY, y)),
+    };
+  };
 
   useEffect(() => {
     userZoomRef.current = userZoom;
+    if (userZoom <= 1.01) {
+      setPanOffset({ x: 0, y: 0 });
+      panOffsetRef.current = { x: 0, y: 0 };
+    } else {
+      const clamped = clampPan(panOffsetRef.current.x, panOffsetRef.current.y, userZoom);
+      if (clamped.x !== panOffsetRef.current.x || clamped.y !== panOffsetRef.current.y) {
+        setPanOffset(clamped);
+        panOffsetRef.current = clamped;
+      }
+    }
   }, [userZoom]);
 
   useEffect(() => {
@@ -804,15 +830,20 @@ export default function App() {
       if (e.touches.length === 2) {
         pinchStartDistRef.current = getTouchDist(e.touches);
         pinchStartZoomRef.current = userZoomRef.current;
+        panStartTouchRef.current = null;
       }
       if (e.touches.length === 1) {
         const now = Date.now();
         if (now - lastTapTimeRef.current < 300) {
-          // double-tap → reset zoom
+          // double-tap → reset zoom and pan
           setUserZoom(1);
           userZoomRef.current = 1;
+          setPanOffset({ x: 0, y: 0 });
+          panOffsetRef.current = { x: 0, y: 0 };
         }
         lastTapTimeRef.current = now;
+        panStartTouchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panStartOffsetRef.current = { ...panOffsetRef.current };
       }
     };
 
@@ -824,12 +855,37 @@ export default function App() {
         const next = clampZoom(pinchStartZoomRef.current * ratio);
         setUserZoom(next);
         userZoomRef.current = next;
+        return;
+      }
+      // 1-finger pan when zoomed in
+      if (
+        e.touches.length === 1 &&
+        userZoomRef.current > 1.01 &&
+        panStartTouchRef.current !== null
+      ) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - panStartTouchRef.current.x;
+        const dy = e.touches[0].clientY - panStartTouchRef.current.y;
+        const clamped = clampPan(
+          panStartOffsetRef.current.x + dx,
+          panStartOffsetRef.current.y + dy,
+          userZoomRef.current,
+        );
+        setPanOffset(clamped);
+        panOffsetRef.current = clamped;
       }
     };
 
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) {
         pinchStartDistRef.current = null;
+      }
+      if (e.touches.length === 0) {
+        panStartTouchRef.current = null;
+      } else if (e.touches.length === 1) {
+        // Finger count dropped from 2 → 1, restart pan tracking
+        panStartTouchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panStartOffsetRef.current = { ...panOffsetRef.current };
       }
     };
 
@@ -1661,7 +1717,7 @@ export default function App() {
                     style={{
                       width: BOOK_STAGE_WIDTH * stageScale,
                       height: BOOK_STAGE_HEIGHT * stageScale,
-                      transform: `scale(${userZoom})`,
+                      transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${userZoom})`,
                       transformOrigin: "center center",
                       transition: userZoom === 1 ? "transform 0.25s ease" : "none",
                     }}
