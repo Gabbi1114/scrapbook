@@ -352,6 +352,7 @@ export async function saveSharedPagesById(
   id: string,
   pages: PageData[],
   musicUrl?: string,
+  options?: { signal?: AbortSignal },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = shareApiBase();
   const url = `${base}/api/share/${encodeURIComponent(id)}`;
@@ -359,6 +360,7 @@ export async function saveSharedPagesById(
     const r = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
+      signal: options?.signal,
       body: JSON.stringify({
         v: 1,
         pages,
@@ -371,6 +373,9 @@ export async function saveSharedPagesById(
     }
     return { ok: true };
   } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return { ok: false, error: "aborted" };
+    }
     return { ok: false, error: String(e) };
   }
 }

@@ -276,6 +276,7 @@ const LOADING_SCENE_EXIT_MS = 700;
 const LOADING_PROGRESS_SETTLE_MS = 220;
 const BOOTSTRAP_NETWORK_TIMEOUT_MS = 7000;
 const BOOTSTRAP_MAX_WAIT_MS = 9000;
+const MAX_UPLOAD_IMAGE_SIDE_PX = 1600;
 
 function isIosWebkitDevice(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -301,6 +302,96 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       },
     );
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchBundleWithRetry(
+  id: string,
+  attempts: number = 3,
+): Promise<Awaited<ReturnType<typeof fetchSharedBundleById>>> {
+  let last: Awaited<ReturnType<typeof fetchSharedBundleById>> = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const bundle = await withTimeout(
+        fetchSharedBundleById(id),
+        BOOTSTRAP_NETWORK_TIMEOUT_MS,
+      );
+      if (bundle) return bundle;
+      last = bundle;
+    } catch {
+      // retry below
+    }
+    if (i < attempts - 1) {
+      await sleep(300 * (i + 1));
+    }
+  }
+  return last;
+}
+
+async function optimizeImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  if (file.type === "image/gif" || file.type === "image/svg+xml") return file;
+
+  const readDataUrl = (f: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read image file."));
+      reader.readAsDataURL(f);
+    });
+
+  const loadImage = (src: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Failed to decode image."));
+      img.src = src;
+    });
+
+  const dataUrl = await readDataUrl(file);
+  const img = await loadImage(dataUrl);
+  const srcW = img.naturalWidth || 1;
+  const srcH = img.naturalHeight || 1;
+  const maxSide = Math.max(srcW, srcH);
+  const shouldResize = maxSide > MAX_UPLOAD_IMAGE_SIDE_PX;
+  const scale = shouldResize ? MAX_UPLOAD_IMAGE_SIDE_PX / maxSide : 1;
+  const targetW = Math.max(1, Math.round(srcW * scale));
+  const targetH = Math.max(1, Math.round(srcH * scale));
+
+  // Skip recompression for already-small files to avoid quality loss.
+  if (!shouldResize && file.size < 1_800_000) return file;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(img, 0, 0, targetW, targetH);
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/webp", 0.82),
+  );
+  if (!blob || blob.size >= file.size) return file;
+  const safeName = (file.name || "image").replace(/\.[^.]+$/, "");
+  return new File([blob], `${safeName}.webp`, {
+    type: "image/webp",
+    lastModified: Date.now(),
+  });
+}
+
+function shouldRenderLeaf(
+  index: number,
+  currentLeaf: number,
+  totalLeaves: number,
+): boolean {
+  if (totalLeaves <= 8) return true;
+  if (index === 0 || index === totalLeaves - 1) return true;
+  return (
+    Math.abs(index - currentLeaf) <= 2 || Math.abs(index - (currentLeaf - 1)) <= 2
+  );
 }
 
 function LoadingScene({
@@ -429,6 +520,8 @@ export default function App() {
   const ytPlayerRef = useRef<any>(null);
   const ytHostRef = useRef<HTMLDivElement | null>(null);
   const hasAudioGestureRef = useRef(false);
+  const autosaveAbortRef = useRef<AbortController | null>(null);
+  const autosaveSeqRef = useRef(0);
   const preferLiteEffects = isIosWebkitDevice();
 
   useEffect(() => {
@@ -772,10 +865,7 @@ export default function App() {
     (async () => {
       try {
         if (sid) {
-          const bundle = await withTimeout(
-            fetchSharedBundleById(sid),
-            BOOTSTRAP_NETWORK_TIMEOUT_MS,
-          );
+          const bundle = await fetchBundleWithRetry(sid, 3);
           if (cancelled) return;
           if (bundle) {
             setCurrentShareId(sid);
@@ -791,15 +881,16 @@ export default function App() {
         }
         if (!canPublishShareLinks()) return;
         if (!studioRootShareId) return;
-        const ensured = await withTimeout(
-          ensureSharedPagesById(studioRootShareId, initialPagesRef.current),
-          BOOTSTRAP_NETWORK_TIMEOUT_MS,
-        );
-        if (cancelled || !ensured.ok) return;
-        const bundle = await withTimeout(
-          fetchSharedBundleById(studioRootShareId),
-          BOOTSTRAP_NETWORK_TIMEOUT_MS,
-        );
+        // Avoid accidental reset: fetch current server data first, ensure only when missing.
+        let bundle = await fetchBundleWithRetry(studioRootShareId, 2);
+        if (!bundle) {
+          const ensured = await withTimeout(
+            ensureSharedPagesById(studioRootShareId, initialPagesRef.current),
+            BOOTSTRAP_NETWORK_TIMEOUT_MS,
+          );
+          if (cancelled || !ensured.ok) return;
+          bundle = await fetchBundleWithRetry(studioRootShareId, 3);
+        }
         if (cancelled) return;
         if (bundle) {
           setCurrentShareId(studioRootShareId);
@@ -887,11 +978,16 @@ export default function App() {
   const saveMusicLinkNow = async () => {
     if (!currentShareId) return;
     if (sharedViewMode && !canEditSharedLink) return;
+    autosaveAbortRef.current?.abort();
+    const controller = new AbortController();
+    autosaveAbortRef.current = controller;
     const r = await saveSharedPagesById(
       currentShareId,
       pages,
       backgroundMusicUrl,
+      { signal: controller.signal },
     );
+    if (r.ok === false && r.error === "aborted") return;
     if (!r.ok) {
       setShareHint("Хөгжмийн линк хадгалж чадсангүй. Дахин оролдоно уу.");
       return;
@@ -919,12 +1015,19 @@ export default function App() {
 
   useEffect(() => {
     if (!canSaveToServer || !currentShareId) return;
+    const seq = ++autosaveSeqRef.current;
     const id = window.setTimeout(async () => {
+      autosaveAbortRef.current?.abort();
+      const controller = new AbortController();
+      autosaveAbortRef.current = controller;
       const r = await saveSharedPagesById(
         currentShareId,
         pages,
         backgroundMusicUrl,
+        { signal: controller.signal },
       );
+      if (seq !== autosaveSeqRef.current) return;
+      if (r.ok === false && r.error === "aborted") return;
       if (!r.ok) {
         setShareHint(
           "Энэ линк дээрх өөрчлөлтийг хадгалж чадсангүй. Хуудсаа сэргээгээд дахин оролдоно уу.",
@@ -934,7 +1037,9 @@ export default function App() {
       setShareHint("Өөрчлөлт хадгалагдлаа.");
       window.setTimeout(() => setShareHint(null), 1200);
     }, 700);
-    return () => window.clearTimeout(id);
+    return () => {
+      window.clearTimeout(id);
+    };
   }, [
     backgroundMusicUrl,
     canSaveToServer,
@@ -942,6 +1047,18 @@ export default function App() {
     pages,
     sharedViewMode,
   ]);
+
+  useEffect(
+    () => () => {
+      autosaveAbortRef.current?.abort();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (canSaveToServer) return;
+    autosaveAbortRef.current?.abort();
+  }, [canSaveToServer, currentShareId]);
 
   const turnNext = () => {
     if (currentLeaf < totalLeaves) {
@@ -1198,15 +1315,24 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (currentShareId) {
-      setShareHint("Зураг байршуулж байна...");
+      setShareHint("Зургийг оновчлоод байршуулж байна...");
       void (async () => {
+        let preparedFile = file;
+        try {
+          preparedFile = await optimizeImageForUpload(file);
+        } catch {
+          preparedFile = file;
+        }
         let mediaSize: { width: number; height: number } | null = null;
         try {
-          mediaSize = await probeImageSize(file);
+          mediaSize = await probeImageSize(preparedFile);
         } catch {
           mediaSize = null;
         }
-        const uploaded = await uploadImageFileForShare(currentShareId, file);
+        const uploaded = await uploadImageFileForShare(
+          currentShareId,
+          preparedFile,
+        );
         if (uploaded.ok === false) {
           setShareHint(null);
           window.alert(toFriendlyUploadError(uploaded.error, "image"));
@@ -1450,7 +1576,11 @@ export default function App() {
                 type="button"
                 onClick={turnPrev}
                 disabled={currentLeaf === 0}
-                className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
+                className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-10 ${
+                  preferLiteEffects
+                    ? "bg-white/35 hover:bg-white/45"
+                    : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
+                }`}
                 aria-label="Өмнөх хуудас"
               >
                 <ChevronLeft size={26} />
@@ -1496,7 +1626,11 @@ export default function App() {
                           setSelectedPageId={setSelectedPageId}
                         />
                       ) : (
-                        leaves.map((leaf, i) => (
+                        leaves.map((leaf, i) => {
+                          if (!shouldRenderLeaf(i, currentLeaf, totalLeaves)) {
+                            return null;
+                          }
+                          return (
                           <FlipPage
                             key={i}
                             leaf={leaf}
@@ -1516,7 +1650,8 @@ export default function App() {
                             bendIntensity={bendIntensity}
                             liteMode={preferLiteEffects}
                           />
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -1527,7 +1662,11 @@ export default function App() {
                 type="button"
                 onClick={turnNext}
                 disabled={currentLeaf === totalLeaves}
-                className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-white/30 disabled:opacity-0 disabled:pointer-events-none transition-all z-10"
+                className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-10 ${
+                  preferLiteEffects
+                    ? "bg-white/35 hover:bg-white/45"
+                    : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
+                }`}
                 aria-label="Дараагийн хуудас"
               >
                 <ChevronRight size={26} />
@@ -1548,7 +1687,13 @@ export default function App() {
                   {shareHint}
                 </p>
               )}
-              <div className="bg-white/10 backdrop-blur-md px-6 py-3 rounded-full flex items-center gap-4 shadow-xl border border-white/20">
+              <div
+                className={`px-6 py-3 rounded-full flex items-center gap-4 border border-white/20 ${
+                  preferLiteEffects
+                    ? "bg-white/20 shadow-lg"
+                    : "bg-white/10 backdrop-blur-md shadow-xl"
+                }`}
+              >
                 {!sharedViewMode && (
                   <>
                     <button
@@ -2521,6 +2666,7 @@ function DraggableElement({
                   alt="polaroid"
                   loading="lazy"
                   decoding="async"
+                  sizes="25vw"
                   className="h-full w-full rounded-[2px] border border-black/10 object-cover"
                   draggable={false}
                 />
@@ -2540,6 +2686,7 @@ function DraggableElement({
           alt="scrapbook"
           loading="lazy"
           decoding="async"
+          sizes="30vw"
           className="object-cover"
           style={{
             width: element.width || 192,
