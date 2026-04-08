@@ -725,11 +725,10 @@ export default function App() {
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      // Keep browser pinch-zoom, but block one-finger page pull/swipe refresh.
+      // 2-finger pinch is handled by the stage's own listener → don't block it here.
       if (e.touches.length > 1) return;
-      const viewportScale = window.visualViewport?.scale ?? 1;
-      // When user is zoomed in, allow native drag/pan to move around the page.
-      if (viewportScale > 1.01) return;
+      // When user has zoomed in via in-app zoom, allow 1-finger pan.
+      if (userZoomRef.current > 1.01) return;
       if (!shouldAllowNativeScroll(e.target)) {
         e.preventDefault();
       }
@@ -777,6 +776,72 @@ export default function App() {
 
   const stageViewportRef = useRef<HTMLDivElement>(null);
   const [stageScale, setStageScale] = useState(1);
+
+  // In-app pinch zoom (replaces browser zoom to prevent iOS crash)
+  const [userZoom, setUserZoom] = useState(1);
+  const userZoomRef = useRef(1);
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef(1);
+  const lastTapTimeRef = useRef(0);
+
+  const clampZoom = (z: number) => Math.min(4, Math.max(1, z));
+
+  useEffect(() => {
+    userZoomRef.current = userZoom;
+  }, [userZoom]);
+
+  useEffect(() => {
+    const el = stageViewportRef.current;
+    if (!el) return;
+
+    const getTouchDist = (t: TouchList) => {
+      const dx = t[0].clientX - t[1].clientX;
+      const dy = t[0].clientY - t[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchStartDistRef.current = getTouchDist(e.touches);
+        pinchStartZoomRef.current = userZoomRef.current;
+      }
+      if (e.touches.length === 1) {
+        const now = Date.now();
+        if (now - lastTapTimeRef.current < 300) {
+          // double-tap → reset zoom
+          setUserZoom(1);
+          userZoomRef.current = 1;
+        }
+        lastTapTimeRef.current = now;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchStartDistRef.current !== null) {
+        e.preventDefault();
+        const newDist = getTouchDist(e.touches);
+        const ratio = newDist / pinchStartDistRef.current;
+        const next = clampZoom(pinchStartZoomRef.current * ratio);
+        setUserZoom(next);
+        userZoomRef.current = next;
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchStartDistRef.current = null;
+      }
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
 
   /** Uniform scale so the fixed 800×600 stage matches preview/edit on every screen size. */
   useLayoutEffect(() => {
@@ -1589,13 +1654,16 @@ export default function App() {
               <BookStageScaleContext.Provider value={stageScale}>
                 <div
                   ref={stageViewportRef}
-                  className="flex min-h-0 min-w-0 flex-1 h-full max-h-full items-center justify-center overflow-visible"
+                  className="flex min-h-0 min-w-0 flex-1 h-full max-h-full items-center justify-center overflow-hidden"
                 >
                   <div
-                    className="relative shrink-0 overflow-visible"
+                    className="relative shrink-0"
                     style={{
                       width: BOOK_STAGE_WIDTH * stageScale,
                       height: BOOK_STAGE_HEIGHT * stageScale,
+                      transform: `scale(${userZoom})`,
+                      transformOrigin: "center center",
+                      transition: userZoom === 1 ? "transform 0.25s ease" : "none",
                     }}
                   >
                     <div
