@@ -1,0 +1,18 @@
+{
+  "name": "Бяцхан ном",
+  "short_name": "Бяцхан ном",
+  "description": "Scrapbook web application",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#4A5568",
+  "theme_color": "#4A5568",
+  "icons": [
+    {
+      "src": "/assets/favicon.png",
+      "sizes": "2506x2506",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
