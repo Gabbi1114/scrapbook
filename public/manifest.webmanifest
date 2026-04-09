@@ -1,8 +1,8 @@
 {
+  "id": "/",
   "name": "Бяцхан ном",
   "short_name": "Бяцхан ном",
   "description": "Scrapbook web application",
-  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#4A5568",
