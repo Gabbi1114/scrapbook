@@ -51,26 +51,17 @@ self.addEventListener("fetch", (event) => {
 
   if (!isStaticShellAsset(url, request.destination)) return;
 
-  // Static shell assets only: cache-first with background refresh.
+  // Static shell assets only: network-first, cache as fallback (avoids stale chunks after deploy).
   event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
-      const cached = await cache.match(request);
-      const networkPromise = fetch(request)
+    caches.open(CACHE_NAME).then((cache) =>
+      fetch(request)
         .then((response) => {
           if (response.ok) {
             cache.put(request, response.clone());
           }
           return response;
         })
-        .catch(() => null);
-
-      if (cached) {
-        networkPromise.catch(() => null);
-        return cached;
-      }
-
-      const network = await networkPromise;
-      return network || Response.error();
-    }),
+        .catch(() => cache.match(request).then((c) => c || Response.error())),
+    ),
   );
 });

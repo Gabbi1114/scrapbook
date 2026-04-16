@@ -276,6 +276,11 @@ const LOADING_SCENE_EXIT_MS = 700;
 const LOADING_PROGRESS_SETTLE_MS = 220;
 const BOOTSTRAP_NETWORK_TIMEOUT_MS = 7000;
 const BOOTSTRAP_MAX_WAIT_MS = 9000;
+/** Share links need more time on slow mobile networks; must exceed worst-case fetch retries. */
+const SHARE_FETCH_TIMEOUT_MS = 15000;
+const SHARE_FETCH_ATTEMPTS = 6;
+const SHARE_BOOTSTRAP_FAILSAFE_MS =
+  SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
 const MAX_UPLOAD_IMAGE_SIDE_PX = 1600;
 
 function isIosWebkitDevice(): boolean {
@@ -308,27 +313,32 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function fetchBundleWithRetry(
+async function fetchSharedBundleWithAttempts(
   id: string,
-  attempts: number = 3,
+  attempts: number,
+  timeoutMs: number,
 ): Promise<Awaited<ReturnType<typeof fetchSharedBundleById>>> {
   let last: Awaited<ReturnType<typeof fetchSharedBundleById>> = null;
   for (let i = 0; i < attempts; i += 1) {
     try {
-      const bundle = await withTimeout(
-        fetchSharedBundleById(id),
-        BOOTSTRAP_NETWORK_TIMEOUT_MS,
-      );
+      const bundle = await withTimeout(fetchSharedBundleById(id), timeoutMs);
       if (bundle) return bundle;
       last = bundle;
     } catch {
       // retry below
     }
     if (i < attempts - 1) {
-      await sleep(300 * (i + 1));
+      await sleep(400 * (i + 1));
     }
   }
   return last;
+}
+
+async function fetchBundleWithRetry(
+  id: string,
+  attempts: number = 3,
+): Promise<Awaited<ReturnType<typeof fetchSharedBundleById>>> {
+  return fetchSharedBundleWithAttempts(id, attempts, BOOTSTRAP_NETWORK_TIMEOUT_MS);
 }
 
 async function optimizeImageForUpload(file: File): Promise<File> {
@@ -448,10 +458,6 @@ export default function App() {
   const [isLoadingSceneExiting, setIsLoadingSceneExiting] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(6);
   const init = getInitialPagesAndShare();
-  const initialShareId =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("share")
-      : null;
   const studioRootShareId = (
     import.meta.env.VITE_STUDIO_ROOT_SHARE_ID || "studio-root"
   ).trim();
@@ -471,13 +477,23 @@ export default function App() {
   const [sharedViewMode, setSharedViewMode] = useState(
     init.openedFromShareLink,
   );
-  const [currentShareId, setCurrentShareId] = useState<string | null>(
-    initialShareId,
-  );
+  const [currentShareId, setCurrentShareId] = useState<string | null>(null);
   const [history, setHistory] = useState<PageData[][]>([init.pages]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const initialPagesRef = useRef(init.pages);
   const [shareHint, setShareHint] = useState<string | null>(null);
+  const [shareLinkLoadError, setShareLinkLoadError] = useState<
+    null | "timeout" | "failed"
+  >(null);
+  const [shareBootstrapRetry, setShareBootstrapRetry] = useState(0);
+  const retryShareBootstrap = useCallback(() => {
+    setShareLinkLoadError(null);
+    setIsInitialBootstrapDone(false);
+    setIsLoadingSceneVisible(true);
+    setIsLoadingSceneExiting(false);
+    setLoadingProgress(6);
+    setShareBootstrapRetry((n) => n + 1);
+  }, []);
   const [shareStorageUsedBytes, setShareStorageUsedBytes] = useState(0);
   const [shareStorageLimitBytes, setShareStorageLimitBytes] = useState(
     SHARE_STORAGE_LIMIT_BYTES,
@@ -970,25 +986,42 @@ export default function App() {
 
   useEffect(() => {
     if (currentShareId) return;
+    if (sharedViewMode) return;
     const id = window.setTimeout(() => saveDraftToStorage(pages), 500);
     return () => window.clearTimeout(id);
-  }, [pages, currentShareId]);
+  }, [pages, currentShareId, sharedViewMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get("share");
     let cancelled = false;
+    if (!sid) {
+      setShareLinkLoadError(null);
+    }
+    const applyShareBundleRef = { current: true };
+    const failsafeMs = sid ? SHARE_BOOTSTRAP_FAILSAFE_MS : BOOTSTRAP_MAX_WAIT_MS;
     const bootstrapFailSafe = window.setTimeout(() => {
       if (!cancelled) {
+        if (sid) {
+          applyShareBundleRef.current = false;
+          setShareLinkLoadError("timeout");
+          setShareHint(null);
+        }
         setIsInitialBootstrapDone(true);
       }
-    }, BOOTSTRAP_MAX_WAIT_MS);
+    }, failsafeMs);
     (async () => {
       try {
         if (sid) {
-          const bundle = await fetchBundleWithRetry(sid, 3);
-          if (cancelled) return;
+          setShareHint("Линкийн өгөгдлийг ачаалж байна...");
+          const bundle = await fetchSharedBundleWithAttempts(
+            sid,
+            SHARE_FETCH_ATTEMPTS,
+            SHARE_FETCH_TIMEOUT_MS,
+          );
+          if (cancelled || !applyShareBundleRef.current) return;
           if (bundle) {
+            setShareLinkLoadError(null);
             setCurrentShareId(sid);
             setPages(bundle.pages);
             setBackgroundMusicUrl(bundle.musicUrl || "");
@@ -997,6 +1030,10 @@ export default function App() {
             setSharedViewMode(true);
             setHistory([bundle.pages]);
             setHistoryIndex(0);
+            setShareHint(null);
+          } else {
+            setShareLinkLoadError("failed");
+            setShareHint(null);
           }
           return;
         }
@@ -1034,7 +1071,7 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(bootstrapFailSafe);
     };
-  }, [studioRootShareId]);
+  }, [studioRootShareId, shareBootstrapRetry]);
 
   useEffect(() => {
     if (!shareEditUntilIso || !sharedViewMode) return;
@@ -1631,6 +1668,25 @@ export default function App() {
 
   return (
     <>
+      {shareLinkLoadError && (
+        <div
+          className="fixed left-0 right-0 top-0 z-120 flex items-center justify-center gap-3 border-b border-amber-700/40 bg-amber-950/95 px-3 py-2 text-center text-sm text-amber-50 shadow-md"
+          role="alert"
+        >
+          <span className="min-w-0 flex-1">
+            {shareLinkLoadError === "timeout"
+              ? "Холболт удаан байна. Дахин оролдоно уу."
+              : "Хадгалагдсан номыг ачаалж чадсангүй. Интернэтээ шалгана уу."}
+          </span>
+          <button
+            type="button"
+            onClick={retryShareBootstrap}
+            className="shrink-0 rounded-lg bg-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100"
+          >
+            Дахин ачаалах
+          </button>
+        </div>
+      )}
       <div
         className="h-dvh font-sans flex touch-auto flex-col overflow-hidden"
         style={{ backgroundColor: appBackgroundColor }}

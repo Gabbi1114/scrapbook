@@ -338,7 +338,7 @@ export async function fetchSharedBundleById(
   const base = shareApiBase();
   const url = `${base}/api/share/${encodeURIComponent(id)}`;
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) return null;
     const data = (await r.json()) as unknown;
     return parseSharedScrapbookResponse(data);
