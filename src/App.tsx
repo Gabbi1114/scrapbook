@@ -203,21 +203,42 @@ function defaultEditorLeftPx(): number {
 function parseYouTubeVideoId(url: string): string | null {
   const raw = url.trim();
   if (!raw) return null;
+  // Pasted ID only (no https://) — common when copying from the address bar on mobile
+  if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) return raw;
+
+  let href = raw;
+  if (!/^https?:\/\//i.test(href)) {
+    href = `https://${href.replace(/^\/+/, "")}`;
+  }
+
   try {
-    const u = new URL(raw);
-    if (u.hostname.includes("youtu.be")) {
-      const id = u.pathname.replace("/", "").trim();
-      return id || null;
+    const u = new URL(href);
+    const host = u.hostname.toLowerCase();
+    const isYtHost =
+      host === "youtu.be" ||
+      host.endsWith(".youtu.be") ||
+      host.includes("youtube.com") ||
+      host.includes("youtube-nocookie.com");
+    if (!isYtHost) return null;
+
+    if (host.includes("youtu.be")) {
+      const seg = u.pathname.split("/").filter(Boolean)[0]?.trim();
+      return seg || null;
     }
-    if (u.hostname.includes("youtube.com")) {
-      const v = u.searchParams.get("v");
-      if (v) return v;
-      const parts = u.pathname.split("/").filter(Boolean);
-      const embedIdx = parts.indexOf("embed");
-      if (embedIdx >= 0 && parts[embedIdx + 1]) return parts[embedIdx + 1];
-      const shortsIdx = parts.indexOf("shorts");
-      if (shortsIdx >= 0 && parts[shortsIdx + 1]) return parts[shortsIdx + 1];
-    }
+
+    const v = u.searchParams.get("v");
+    if (v) return v;
+
+    const parts = u.pathname.split("/").filter(Boolean);
+    const embedIdx = parts.indexOf("embed");
+    if (embedIdx >= 0 && parts[embedIdx + 1]) return parts[embedIdx + 1];
+    const shortsIdx = parts.indexOf("shorts");
+    if (shortsIdx >= 0 && parts[shortsIdx + 1]) return parts[shortsIdx + 1];
+    const liveIdx = parts.indexOf("live");
+    if (liveIdx >= 0 && parts[liveIdx + 1]) return parts[liveIdx + 1];
+    const vPathIdx = parts.indexOf("v");
+    if (vPathIdx >= 0 && parts[vPathIdx + 1]) return parts[vPathIdx + 1];
+
     return null;
   } catch {
     return null;
@@ -620,6 +641,7 @@ export default function App() {
     };
     window.addEventListener("pointerdown", onFirstInteract, { once: true });
     window.addEventListener("click", onFirstInteract, { once: true });
+    window.addEventListener("keydown", onFirstInteract, { once: true });
     window.addEventListener("touchstart", onFirstInteract, {
       once: true,
       passive: true,
@@ -627,6 +649,7 @@ export default function App() {
     return () => {
       window.removeEventListener("pointerdown", onFirstInteract);
       window.removeEventListener("click", onFirstInteract);
+      window.removeEventListener("keydown", onFirstInteract);
       window.removeEventListener("touchstart", onFirstInteract);
     };
   }, [tryStartBackgroundMusic]);
@@ -680,6 +703,10 @@ export default function App() {
         playsinline: 1,
         loop: 1,
         playlist: ytVideoId,
+        enablejsapi: 1,
+        ...(typeof window !== "undefined"
+          ? { origin: window.location.origin }
+          : {}),
       },
       events: {
         onReady: (ev: any) => {
