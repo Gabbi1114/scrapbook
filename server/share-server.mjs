@@ -282,7 +282,7 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
 
   const img = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await img.metadata();
-  const maxSide = options.hd ? 2880 : 2400;
+  const maxSide = options.hd ? 2560 : 2200;
   const resized = img.resize({
     width: meta.width && meta.width > maxSide ? maxSide : undefined,
     height: meta.height && meta.height > maxSide ? maxSide : undefined,
@@ -301,7 +301,7 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
     };
   }
   const webp = await resized
-    .webp({ quality: options.hd ? 88 : 86, effort: 4 })
+    .webp({ quality: options.hd ? 86 : 84, effort: 4 })
     .toBuffer();
   return {
     body: webp,

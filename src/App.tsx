@@ -311,8 +311,8 @@ const SHARE_FETCH_TIMEOUT_MS = 15000;
 const SHARE_FETCH_ATTEMPTS = 6;
 const SHARE_BOOTSTRAP_FAILSAFE_MS =
   SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
-const MAX_UPLOAD_IMAGE_SIDE_PX = 2400;
-const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2880;
+const MAX_UPLOAD_IMAGE_SIDE_PX = 2200;
+const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2560;
 
 function isSandboxDemoShareId(id: string | null | undefined): boolean {
   return id === DEMO_SHARE_ID;
@@ -331,28 +331,36 @@ function getDemoEditUntilIso(id: string): string {
   return new Date(openedAt + DEMO_EDIT_WINDOW_MS).toISOString();
 }
 
-function upgradeDemoAssetUrl(url: string | undefined): string | undefined {
+function upgradeDemoAssetUrl(
+  url: string | undefined,
+  maxWidth: number = 1400,
+): string | undefined {
   if (!url || !url.includes("images.unsplash.com/photo-")) return url;
   try {
     const parsed = new URL(url);
     parsed.searchParams.set("auto", "format");
     parsed.searchParams.set("fit", "crop");
-    parsed.searchParams.set("w", "1600");
-    parsed.searchParams.set("q", "90");
+    parsed.searchParams.set("w", String(maxWidth));
+    parsed.searchParams.set("q", "88");
     return parsed.toString();
   } catch {
-    return url.replace(/w=\d+/g, "w=1600").replace(/q=\d+/g, "q=90");
+    return url
+      .replace(/w=\d+/g, `w=${maxWidth}`)
+      .replace(/q=\d+/g, "q=88");
   }
 }
 
-function upgradeDemoPagesForHd(pages: PageData[]): PageData[] {
+function upgradeDemoPagesForHd(
+  pages: PageData[],
+  maxWidth: number = 1400,
+): PageData[] {
   return pages.map((page) => ({
     ...page,
-    backgroundImage: upgradeDemoAssetUrl(page.backgroundImage),
+    backgroundImage: upgradeDemoAssetUrl(page.backgroundImage, maxWidth),
     elements: page.elements.map((element) => ({
       ...element,
-      content: upgradeDemoAssetUrl(element.content) || element.content,
-      frameImage: upgradeDemoAssetUrl(element.frameImage),
+      content: upgradeDemoAssetUrl(element.content, maxWidth) || element.content,
+      frameImage: upgradeDemoAssetUrl(element.frameImage, maxWidth),
     })),
   }));
 }
@@ -905,13 +913,18 @@ export default function App() {
   const panStartTouchRef = useRef<{ x: number; y: number } | null>(null);
   const panStartOffsetRef = useRef({ x: 0, y: 0 });
 
-  const clampZoom = (z: number) => Math.min(4, Math.max(1, z));
+  const clampZoom = (z: number) =>
+    Math.min(preferLiteEffects ? 2.35 : 3.5, Math.max(1, z));
 
   const clampPan = (x: number, y: number, z: number) => {
     const el = stageViewportRef.current;
     if (!el || z <= 1.01) return { x: 0, y: 0 };
-    const maxX = ((z - 1) * el.clientWidth) / 2;
-    const maxY = ((z - 1) * el.clientHeight) / 2;
+    const scaledW = BOOK_STAGE_WIDTH * stageScale * z;
+    const scaledH = BOOK_STAGE_HEIGHT * stageScale * z;
+    const overflowX = Math.max(0, scaledW - el.clientWidth);
+    const overflowY = Math.max(0, scaledH - el.clientHeight);
+    const maxX = overflowX / 2 + 24;
+    const maxY = overflowY / 2 + 24;
     return {
       x: Math.min(maxX, Math.max(-maxX, x)),
       y: Math.min(maxY, Math.max(-maxY, y)),
@@ -1036,14 +1049,15 @@ export default function App() {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w < 8 || h < 8) return;
-      const s = Math.min(w / BOOK_STAGE_WIDTH, h / BOOK_STAGE_HEIGHT) * 0.98;
+      const fill = preferLiteEffects ? 0.995 : 1.01;
+      const s = Math.min(w / BOOK_STAGE_WIDTH, h / BOOK_STAGE_HEIGHT) * fill;
       setStageScale(Math.max(0.08, Math.min(s, 4)));
     };
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     measure();
     return () => ro.disconnect();
-  }, [isEditing, sharedViewMode]);
+  }, [isEditing, preferLiteEffects, sharedViewMode]);
 
   const totalLeaves = Math.ceil(pages.length / 2);
 
@@ -1141,12 +1155,16 @@ export default function App() {
           if (cancelled || !applyShareBundleRef.current) return;
           if (bundle) {
             const isDemo = isSandboxDemoShareId(sid);
+            const demoAssetMaxWidth = isIosWebkitDevice() ? 1100 : 1400;
             const displayPages = isDemo
-              ? upgradeDemoPagesForHd(bundle.pages)
+              ? upgradeDemoPagesForHd(bundle.pages, demoAssetMaxWidth)
               : bundle.pages;
             const displayAppBackground =
               (isDemo
-                ? upgradeDemoAssetUrl(bundle.appBackgroundImage)
+                ? upgradeDemoAssetUrl(
+                    bundle.appBackgroundImage,
+                    demoAssetMaxWidth,
+                  )
                 : bundle.appBackgroundImage) || "";
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
@@ -2090,14 +2108,14 @@ export default function App() {
             </div>
           )}
 
-          <main className="absolute inset-0 flex flex-col min-h-0 min-w-0 overflow-hidden p-2 sm:p-3">
+          <main className="absolute inset-0 flex flex-col min-h-0 min-w-0 overflow-hidden p-0">
             {/* Row: nav + book fills height minus bottom bar space */}
-            <div className="flex flex-1 min-h-0 w-full items-center justify-center gap-1 sm:gap-2">
+            <div className="relative flex flex-1 min-h-0 w-full items-center justify-center">
               <button
                 type="button"
                 onClick={turnPrev}
                 disabled={currentLeaf === 0}
-                className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-10 ${
+                className={`absolute left-2 top-1/2 -translate-y-1/2 sm:left-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
                   preferLiteEffects
                     ? "bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
@@ -2191,7 +2209,7 @@ export default function App() {
                 type="button"
                 onClick={turnNext}
                 disabled={currentLeaf === totalLeaves}
-                className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-10 ${
+                className={`absolute right-2 top-1/2 -translate-y-1/2 sm:right-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
                   preferLiteEffects
                     ? "bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
