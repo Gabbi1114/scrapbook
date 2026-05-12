@@ -384,7 +384,10 @@ export async function saveSharedPagesById(
   musicUrl?: string,
   appBackgroundImage?: string,
   options?: { signal?: AbortSignal },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; bytesUsed?: number; bytesLimit?: number }
+  | { ok: false; error: string }
+> {
   const base = shareApiBase();
   const url = `${base}/api/share/${encodeURIComponent(id)}`;
   try {
@@ -405,7 +408,15 @@ export async function saveSharedPagesById(
       const t = await r.text();
       return { ok: false, error: t || r.statusText };
     }
-    return { ok: true };
+    const body = (await r.json()) as {
+      bytesUsed?: number;
+      bytesLimit?: number;
+    };
+    return {
+      ok: true,
+      bytesUsed: body.bytesUsed,
+      bytesLimit: body.bytesLimit,
+    };
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
       return { ok: false, error: "aborted" };

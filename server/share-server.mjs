@@ -16,6 +16,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import multer from "multer";
 import sharp from "sharp";
@@ -130,6 +131,87 @@ function currentMediaBytes(shareData) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
+function currentMediaObjects(shareData) {
+  const raw = shareData?.mediaObjects;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const bytes = Number(value);
+    if (
+      typeof key === "string" &&
+      key.length > 0 &&
+      !key.includes("..") &&
+      Number.isFinite(bytes) &&
+      bytes > 0
+    ) {
+      out[key] = Math.floor(bytes);
+    }
+  }
+  return out;
+}
+
+function mediaKeyFromUrl(value, shareId) {
+  if (typeof value !== "string" || !value.includes("/api/media/")) return null;
+  const encoded = value.split("/api/media/")[1]?.split(/[?#]/)[0] || "";
+  if (!encoded) return null;
+  let key = "";
+  try {
+    key = decodeURIComponent(encoded);
+  } catch {
+    key = encoded;
+  }
+  const prefix = `${path.basename(shareId)}/`;
+  if (!key.startsWith(prefix) || key.includes("..")) return null;
+  return key;
+}
+
+function addMediaKey(keys, value, shareId) {
+  const key = mediaKeyFromUrl(value, shareId);
+  if (key) keys.add(key);
+}
+
+function collectReferencedMediaKeys(shareId, pages, appBackgroundImage) {
+  const keys = new Set();
+  addMediaKey(keys, appBackgroundImage, shareId);
+  for (const page of Array.isArray(pages) ? pages : []) {
+    addMediaKey(keys, page?.backgroundImage, shareId);
+    for (const el of Array.isArray(page?.elements) ? page.elements : []) {
+      if (el?.type === "image" || el?.type === "video") {
+        addMediaKey(keys, el.content, shareId);
+      }
+      addMediaKey(keys, el?.frameImage, shareId);
+    }
+  }
+  return keys;
+}
+
+async function pruneUnusedMediaObjects(shareId, shareData, nextPages, appBackgroundImage) {
+  const mediaObjects = currentMediaObjects(shareData);
+  const referenced = collectReferencedMediaKeys(
+    shareId,
+    nextPages,
+    appBackgroundImage,
+  );
+  let mediaBytes = currentMediaBytes(shareData);
+
+  if (!r2) {
+    return { mediaObjects, mediaBytes };
+  }
+
+  for (const [key, bytes] of Object.entries(mediaObjects)) {
+    if (referenced.has(key)) continue;
+    try {
+      await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+      delete mediaObjects[key];
+      mediaBytes = Math.max(0, mediaBytes - bytes);
+    } catch (e) {
+      console.warn(`Could not delete unused media object ${key}:`, e);
+    }
+  }
+
+  return { mediaObjects, mediaBytes };
+}
+
 function pagesJsonBytes(pages) {
   return Buffer.byteLength(JSON.stringify({ v: 1, pages }), "utf8");
 }
@@ -154,26 +236,26 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
 
   const img = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await img.metadata();
-  const maxSide = options.hd ? 2560 : 1920;
+  const maxSide = options.hd ? 1920 : 1600;
   const resized = img.resize({
     width: meta.width && meta.width > maxSide ? maxSide : undefined,
     height: meta.height && meta.height > maxSide ? maxSide : undefined,
     fit: "inside",
     withoutEnlargement: true,
   });
-  const avif = await resized
-    .avif({ quality: options.hd ? 58 : 45, effort: 6 })
-    .toBuffer();
-  const webp = await resized
-    .webp({ quality: options.hd ? 82 : 68, effort: 5 })
-    .toBuffer();
-  if (avif.length <= webp.length) {
+  if (options.preferAvif) {
+    const avif = await resized
+      .avif({ quality: options.hd ? 56 : 44, effort: 3 })
+      .toBuffer();
     return {
       body: avif,
       contentType: "image/avif",
       ext: ".avif",
     };
   }
+  const webp = await resized
+    .webp({ quality: options.hd ? 76 : 68, effort: 3 })
+    .toBuffer();
   return {
     body: webp,
     contentType: "image/webp",
@@ -232,21 +314,21 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
       "-t",
       String(MAX_VIDEO_SECONDS),
       "-vf",
-      "scale=min(1280\\,iw):-2:flags=lanczos",
+      "scale=min(960\\,iw):-2:flags=fast_bilinear",
       "-c:v",
       "libx264",
       "-preset",
       "veryfast",
       "-crf",
-      "28",
+      "30",
       "-maxrate",
-      "1400k",
+      "1000k",
       "-bufsize",
-      "2800k",
+      "2000k",
       "-c:a",
       "aac",
       "-b:a",
-      "128k",
+      "96k",
       "-movflags",
       "+faststart",
       "-pix_fmt",
@@ -392,7 +474,19 @@ app.put("/api/share/:id", async (req, res) => {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
 
-    const mediaBytes = currentMediaBytes(prev);
+    const nextAppBackgroundImage =
+      typeof appBackgroundImage === "string"
+        ? appBackgroundImage.trim()
+        : typeof prev?.appBackgroundImage === "string"
+          ? prev.appBackgroundImage
+          : "";
+    const prunedMedia = await pruneUnusedMediaObjects(
+      req.params.id,
+      prev,
+      pages,
+      nextAppBackgroundImage,
+    );
+    const mediaBytes = prunedMedia.mediaBytes;
     const jsonBytes = pagesJsonBytes(pages);
     if (jsonBytes + mediaBytes > MAX_SHARE_BYTES) {
       return res.status(413).json({
@@ -409,14 +503,19 @@ app.put("/api/share/:id", async (req, res) => {
           ? { musicUrl: prev.musicUrl }
           : {}),
       ...(typeof appBackgroundImage === "string"
-        ? { appBackgroundImage: appBackgroundImage.trim() }
+        ? { appBackgroundImage: nextAppBackgroundImage }
         : typeof prev?.appBackgroundImage === "string"
           ? { appBackgroundImage: prev.appBackgroundImage }
           : {}),
+      mediaObjects: prunedMedia.mediaObjects,
       ...(editUntil ? { editUntil } : {}),
     };
     await persistShare(req.params.id, payload);
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      bytesUsed: mediaBytes,
+      bytesLimit: MAX_SHARE_BYTES,
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });
@@ -498,6 +597,7 @@ app.post(
         });
       }
       const mediaBytes = currentMediaBytes(record.data);
+      const mediaObjects = currentMediaObjects(record.data);
       const jsonBytes = pagesJsonBytes(record.data.pages || []);
       if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
         return res.status(413).json({
@@ -520,6 +620,10 @@ app.post(
       const updatedShare = {
         ...record.data,
         mediaBytes: mediaBytes + converted.body.length,
+        mediaObjects: {
+          ...mediaObjects,
+          [key]: converted.body.length,
+        },
       };
       await persistShare(req.params.id, updatedShare);
 

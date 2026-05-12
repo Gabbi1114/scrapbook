@@ -310,7 +310,7 @@ const SHARE_FETCH_ATTEMPTS = 6;
 const SHARE_BOOTSTRAP_FAILSAFE_MS =
   SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
 const MAX_UPLOAD_IMAGE_SIDE_PX = 1600;
-const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2560;
+const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 1920;
 
 function isIosWebkitDevice(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -392,24 +392,22 @@ async function optimizeImageForUpload(
   const minRecompressBytes = options.minRecompressBytes ?? 1_800_000;
   const webpQuality = options.webpQuality ?? 0.82;
 
-  const readDataUrl = (f: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Failed to read image file."));
-      reader.readAsDataURL(f);
-    });
-
-  const loadImage = (src: string) =>
+  const loadImage = (f: File) =>
     new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("Failed to decode image."));
-      img.src = src;
+      const url = URL.createObjectURL(f);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to decode image."));
+      };
+      img.src = url;
     });
 
-  const dataUrl = await readDataUrl(file);
-  const img = await loadImage(dataUrl);
+  const img = await loadImage(file);
   const srcW = img.naturalWidth || 1;
   const srcH = img.naturalHeight || 1;
   const maxSide = Math.max(srcW, srcH);
@@ -1228,6 +1226,12 @@ export default function App() {
       return;
     }
     setShareHint("Хөгжмийн линк хадгалагдлаа.");
+    if (typeof r.bytesUsed === "number") {
+      setShareStorageUsedBytes(r.bytesUsed);
+    }
+    if (typeof r.bytesLimit === "number") {
+      setShareStorageLimitBytes(r.bytesLimit);
+    }
     window.setTimeout(() => setShareHint(null), 1400);
   };
 
@@ -1269,6 +1273,12 @@ export default function App() {
           "Энэ линк дээрх өөрчлөлтийг хадгалж чадсангүй. Хуудсаа сэргээгээд дахин оролдоно уу.",
         );
         return;
+      }
+      if (typeof r.bytesUsed === "number") {
+        setShareStorageUsedBytes(r.bytesUsed);
+      }
+      if (typeof r.bytesLimit === "number") {
+        setShareStorageLimitBytes(r.bytesLimit);
       }
       setShareHint("Өөрчлөлт хадгалагдлаа.");
       window.setTimeout(() => setShareHint(null), 1200);
@@ -1512,8 +1522,8 @@ export default function App() {
     try {
       preparedFile = await optimizeImageForUpload(file, {
         maxSide: MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX,
-        minRecompressBytes: 3_500_000,
-        webpQuality: 0.9,
+        minRecompressBytes: 1_200_000,
+        webpQuality: 0.82,
       });
     } catch {
       preparedFile = file;
@@ -1706,25 +1716,24 @@ export default function App() {
       e.target.value = "";
       return;
     }
+    let mediaSize: { width: number; height: number } | null = null;
     try {
-      const sec = await probeVideoDurationSec(file);
+      const [sec, size] = await Promise.all([
+        probeVideoDurationSec(file),
+        probeVideoSize(file).catch(() => null),
+      ]);
       if (sec > 60) {
         window.alert("Нэг видео хамгийн ихдээ 1 минут байна.");
         e.target.value = "";
         return;
       }
+      mediaSize = size;
     } catch {
       window.alert("Видеоны уртыг шалгаж чадсангүй.");
       e.target.value = "";
       return;
     }
 
-    let mediaSize: { width: number; height: number } | null = null;
-    try {
-      mediaSize = await probeVideoSize(file);
-    } catch {
-      mediaSize = null;
-    }
     setShareHint("Видео байршуулж байна...");
     const uploaded = await uploadImageFileForShare(currentShareId, file);
     if (uploaded.ok === false) {
