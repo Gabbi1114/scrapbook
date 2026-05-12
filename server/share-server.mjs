@@ -282,16 +282,17 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
 
   const img = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await img.metadata();
-  const maxSide = options.hd ? 1920 : 1600;
+  const maxSide = options.hd ? 2880 : 2400;
   const resized = img.resize({
     width: meta.width && meta.width > maxSide ? maxSide : undefined,
     height: meta.height && meta.height > maxSide ? maxSide : undefined,
     fit: "inside",
     withoutEnlargement: true,
+    kernel: sharp.kernel.lanczos3,
   });
   if (options.preferAvif) {
     const avif = await resized
-      .avif({ quality: options.hd ? 56 : 44, effort: 3 })
+      .avif({ quality: options.hd ? 70 : 62, effort: 4 })
       .toBuffer();
     return {
       body: avif,
@@ -300,7 +301,7 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
     };
   }
   const webp = await resized
-    .webp({ quality: options.hd ? 76 : 68, effort: 3 })
+    .webp({ quality: options.hd ? 88 : 86, effort: 4 })
     .toBuffer();
   return {
     body: webp,

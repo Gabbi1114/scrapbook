@@ -311,8 +311,8 @@ const SHARE_FETCH_TIMEOUT_MS = 15000;
 const SHARE_FETCH_ATTEMPTS = 6;
 const SHARE_BOOTSTRAP_FAILSAFE_MS =
   SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
-const MAX_UPLOAD_IMAGE_SIDE_PX = 1600;
-const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 1920;
+const MAX_UPLOAD_IMAGE_SIDE_PX = 2400;
+const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2880;
 
 function isSandboxDemoShareId(id: string | null | undefined): boolean {
   return id === DEMO_SHARE_ID;
@@ -329,6 +329,32 @@ function getDemoEditUntilIso(id: string): string {
     window.localStorage.setItem(key, String(openedAt));
   }
   return new Date(openedAt + DEMO_EDIT_WINDOW_MS).toISOString();
+}
+
+function upgradeDemoAssetUrl(url: string | undefined): string | undefined {
+  if (!url || !url.includes("images.unsplash.com/photo-")) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("auto", "format");
+    parsed.searchParams.set("fit", "crop");
+    parsed.searchParams.set("w", "1600");
+    parsed.searchParams.set("q", "90");
+    return parsed.toString();
+  } catch {
+    return url.replace(/w=\d+/g, "w=1600").replace(/q=\d+/g, "q=90");
+  }
+}
+
+function upgradeDemoPagesForHd(pages: PageData[]): PageData[] {
+  return pages.map((page) => ({
+    ...page,
+    backgroundImage: upgradeDemoAssetUrl(page.backgroundImage),
+    elements: page.elements.map((element) => ({
+      ...element,
+      content: upgradeDemoAssetUrl(element.content) || element.content,
+      frameImage: upgradeDemoAssetUrl(element.frameImage),
+    })),
+  }));
 }
 
 function isIosWebkitDevice(): boolean {
@@ -408,8 +434,8 @@ async function optimizeImageForUpload(
   if (!file.type.startsWith("image/")) return file;
   if (file.type === "image/gif" || file.type === "image/svg+xml") return file;
   const maxUploadSide = options.maxSide ?? MAX_UPLOAD_IMAGE_SIDE_PX;
-  const minRecompressBytes = options.minRecompressBytes ?? 1_800_000;
-  const webpQuality = options.webpQuality ?? 0.82;
+  const minRecompressBytes = options.minRecompressBytes ?? 4_000_000;
+  const webpQuality = options.webpQuality ?? 0.9;
 
   const loadImage = (f: File) =>
     new Promise<HTMLImageElement>((resolve, reject) => {
@@ -443,6 +469,8 @@ async function optimizeImageForUpload(
   canvas.height = targetH;
   const ctx = canvas.getContext("2d");
   if (!ctx) return file;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, targetW, targetH);
 
   const blob = await new Promise<Blob | null>((resolve) =>
@@ -1112,19 +1140,27 @@ export default function App() {
           );
           if (cancelled || !applyShareBundleRef.current) return;
           if (bundle) {
+            const isDemo = isSandboxDemoShareId(sid);
+            const displayPages = isDemo
+              ? upgradeDemoPagesForHd(bundle.pages)
+              : bundle.pages;
+            const displayAppBackground =
+              (isDemo
+                ? upgradeDemoAssetUrl(bundle.appBackgroundImage)
+                : bundle.appBackgroundImage) || "";
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
-            setPages(bundle.pages);
+            setPages(displayPages);
             setBackgroundMusicUrl(bundle.musicUrl || "");
-            setAppBackgroundImageUrl(bundle.appBackgroundImage || "");
+            setAppBackgroundImageUrl(displayAppBackground);
             setShareEditUntilIso(
-              isSandboxDemoShareId(sid)
+              isDemo
                 ? getDemoEditUntilIso(sid)
                 : bundle.editUntil,
             );
             setShareStorageUsedBytes(bundle.mediaBytes);
             setSharedViewMode(true);
-            setHistory([bundle.pages]);
+            setHistory([displayPages]);
             setHistoryIndex(0);
             setShareHint(null);
           } else {
@@ -1575,8 +1611,8 @@ export default function App() {
     try {
       preparedFile = await optimizeImageForUpload(file, {
         maxSide: MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX,
-        minRecompressBytes: 1_200_000,
-        webpQuality: 0.82,
+        minRecompressBytes: 5_000_000,
+        webpQuality: 0.92,
       });
     } catch {
       preparedFile = file;

@@ -143,6 +143,8 @@ html,
 body {
   overscroll-behavior-x: none;
   overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricprecision;
 }
 
 /* ─── Text-selection fix ────────────────────────────────────────────────────
@@ -179,6 +181,22 @@ textarea,
    ─────────────────────────────────────────────────────────────────────────── */
 .scrapbook-element {
   z-index: var(--item-z, 10);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricprecision;
+}
+
+.scrapbook-element img,
+.scrapbook-element video,
+.paper-face img,
+.paper-face video {
+  image-rendering: auto;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.scrapbook-element img,
+.paper-face img {
+  max-width: none;
 }
 
 /* ─── Layer control buttons ─────────────────────────────────────────────────
