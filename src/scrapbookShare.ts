@@ -449,6 +449,7 @@ type UploadMediaResponse = {
 export async function uploadImageFileForShare(
   shareId: string,
   file: File,
+  options: { uploadKind?: "element" | "background" } = {},
 ): Promise<
   | { ok: true; url: string; bytesUsed?: number; bytesLimit?: number }
   | { ok: false; error: string }
@@ -458,6 +459,9 @@ export async function uploadImageFileForShare(
   try {
     const form = new FormData();
     form.append("file", file, file.name || "image");
+    if (options.uploadKind) {
+      form.append("uploadKind", options.uploadKind);
+    }
     const create = await fetch(api, {
       method: "POST",
       body: form,

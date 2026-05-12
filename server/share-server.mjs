@@ -142,7 +142,7 @@ function isVideoMime(m) {
   return typeof m === "string" && m.startsWith("video/");
 }
 
-async function convertImageForStorage(inputBuffer, mime) {
+async function convertImageForStorage(inputBuffer, mime, options = {}) {
   // Keep animated gifs as-is; converting often drops animation frames.
   if (mime === "image/gif") {
     return {
@@ -154,14 +154,19 @@ async function convertImageForStorage(inputBuffer, mime) {
 
   const img = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await img.metadata();
+  const maxSide = options.hd ? 2560 : 1920;
   const resized = img.resize({
-    width: meta.width && meta.width > 1920 ? 1920 : undefined,
-    height: meta.height && meta.height > 1920 ? 1920 : undefined,
+    width: meta.width && meta.width > maxSide ? maxSide : undefined,
+    height: meta.height && meta.height > maxSide ? maxSide : undefined,
     fit: "inside",
     withoutEnlargement: true,
   });
-  const avif = await resized.avif({ quality: 45, effort: 6 }).toBuffer();
-  const webp = await resized.webp({ quality: 68, effort: 5 }).toBuffer();
+  const avif = await resized
+    .avif({ quality: options.hd ? 58 : 45, effort: 6 })
+    .toBuffer();
+  const webp = await resized
+    .webp({ quality: options.hd ? 82 : 68, effort: 5 })
+    .toBuffer();
   if (avif.length <= webp.length) {
     return {
       body: avif,
@@ -179,6 +184,7 @@ async function convertImageForStorage(inputBuffer, mime) {
 function extFromMime(mime, fallback = ".bin") {
   const m = String(mime || "").toLowerCase();
   if (m === "image/webp") return ".webp";
+  if (m === "image/avif") return ".avif";
   if (m === "image/png") return ".png";
   if (m === "image/jpeg") return ".jpg";
   if (m === "image/gif") return ".gif";
@@ -468,9 +474,13 @@ app.post(
         return res.status(400).json({ error: "file is required" });
       }
       const mime = String(file.mimetype || "").toLowerCase();
+      const uploadKind = String(req.body?.uploadKind || "").toLowerCase();
+      const isBackgroundUpload = uploadKind === "background";
       let converted;
       if (isImageMime(mime)) {
-        converted = await convertImageForStorage(file.buffer, mime);
+        converted = await convertImageForStorage(file.buffer, mime, {
+          hd: isBackgroundUpload,
+        });
       } else if (isVideoMime(mime)) {
         try {
           converted = await transcodeVideoForStorage(file.buffer, mime);

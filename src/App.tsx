@@ -310,6 +310,7 @@ const SHARE_FETCH_ATTEMPTS = 6;
 const SHARE_BOOTSTRAP_FAILSAFE_MS =
   SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
 const MAX_UPLOAD_IMAGE_SIDE_PX = 1600;
+const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2560;
 
 function isIosWebkitDevice(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -377,9 +378,19 @@ async function fetchBundleWithRetry(
   );
 }
 
-async function optimizeImageForUpload(file: File): Promise<File> {
+async function optimizeImageForUpload(
+  file: File,
+  options: {
+    maxSide?: number;
+    minRecompressBytes?: number;
+    webpQuality?: number;
+  } = {},
+): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
   if (file.type === "image/gif" || file.type === "image/svg+xml") return file;
+  const maxUploadSide = options.maxSide ?? MAX_UPLOAD_IMAGE_SIDE_PX;
+  const minRecompressBytes = options.minRecompressBytes ?? 1_800_000;
+  const webpQuality = options.webpQuality ?? 0.82;
 
   const readDataUrl = (f: File) =>
     new Promise<string>((resolve, reject) => {
@@ -402,13 +413,13 @@ async function optimizeImageForUpload(file: File): Promise<File> {
   const srcW = img.naturalWidth || 1;
   const srcH = img.naturalHeight || 1;
   const maxSide = Math.max(srcW, srcH);
-  const shouldResize = maxSide > MAX_UPLOAD_IMAGE_SIDE_PX;
-  const scale = shouldResize ? MAX_UPLOAD_IMAGE_SIDE_PX / maxSide : 1;
+  const shouldResize = maxSide > maxUploadSide;
+  const scale = shouldResize ? maxUploadSide / maxSide : 1;
   const targetW = Math.max(1, Math.round(srcW * scale));
   const targetH = Math.max(1, Math.round(srcH * scale));
 
   // Skip recompression for already-small files to avoid quality loss.
-  if (!shouldResize && file.size < 1_800_000) return file;
+  if (!shouldResize && file.size < minRecompressBytes) return file;
 
   const canvas = document.createElement("canvas");
   canvas.width = targetW;
@@ -418,7 +429,7 @@ async function optimizeImageForUpload(file: File): Promise<File> {
   ctx.drawImage(img, 0, 0, targetW, targetH);
 
   const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, "image/webp", 0.82),
+    canvas.toBlob(resolve, "image/webp", webpQuality),
   );
   if (!blob || blob.size >= file.size) return file;
   const safeName = (file.name || "image").replace(/\.[^.]+$/, "");
@@ -1499,11 +1510,19 @@ export default function App() {
     setShareHint("Background image is uploading...");
     let preparedFile = file;
     try {
-      preparedFile = await optimizeImageForUpload(file);
+      preparedFile = await optimizeImageForUpload(file, {
+        maxSide: MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX,
+        minRecompressBytes: 3_500_000,
+        webpQuality: 0.9,
+      });
     } catch {
       preparedFile = file;
     }
-    const uploaded = await uploadImageFileForShare(currentShareId, preparedFile);
+    const uploaded = await uploadImageFileForShare(
+      currentShareId,
+      preparedFile,
+      { uploadKind: "background" },
+    );
     if (uploaded.ok === false) {
       setShareHint(null);
       window.alert(toFriendlyUploadError(uploaded.error, "image"));
