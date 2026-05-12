@@ -16,6 +16,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import multer from "multer";
@@ -185,14 +186,58 @@ function collectReferencedMediaKeys(shareId, pages, appBackgroundImage) {
   return keys;
 }
 
-async function pruneUnusedMediaObjects(shareId, shareData, nextPages, appBackgroundImage) {
+async function hydrateMediaObjectsFromReferences(shareId, shareData) {
   const mediaObjects = currentMediaObjects(shareData);
+  if (!r2) return mediaObjects;
+
+  const referenced = collectReferencedMediaKeys(
+    shareId,
+    shareData?.pages,
+    typeof shareData?.appBackgroundImage === "string"
+      ? shareData.appBackgroundImage
+      : "",
+  );
+
+  for (const key of referenced) {
+    if (mediaObjects[key]) continue;
+    try {
+      const head = await r2.send(
+        new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }),
+      );
+      const bytes = Number(head.ContentLength || 0);
+      if (Number.isFinite(bytes) && bytes > 0) {
+        mediaObjects[key] = Math.floor(bytes);
+      }
+    } catch (e) {
+      console.warn(`Could not read media object size ${key}:`, e);
+    }
+  }
+
+  return mediaObjects;
+}
+
+async function pruneUnusedMediaObjects(
+  shareId,
+  shareData,
+  nextPages,
+  appBackgroundImage,
+) {
+  const mediaObjects = await hydrateMediaObjectsFromReferences(
+    shareId,
+    shareData,
+  );
   const referenced = collectReferencedMediaKeys(
     shareId,
     nextPages,
     appBackgroundImage,
   );
-  let mediaBytes = currentMediaBytes(shareData);
+  let mediaBytes = Object.values(mediaObjects).reduce(
+    (sum, bytes) => sum + bytes,
+    0,
+  );
+  if (mediaBytes <= 0) {
+    mediaBytes = currentMediaBytes(shareData);
+  }
 
   if (!r2) {
     return { mediaObjects, mediaBytes };
@@ -596,8 +641,16 @@ app.post(
           error: "Only image/video upload is supported.",
         });
       }
-      const mediaBytes = currentMediaBytes(record.data);
-      const mediaObjects = currentMediaObjects(record.data);
+      const mediaObjects = await hydrateMediaObjectsFromReferences(
+        req.params.id,
+        record.data,
+      );
+      const trackedMediaBytes = Object.values(mediaObjects).reduce(
+        (sum, bytes) => sum + bytes,
+        0,
+      );
+      const mediaBytes =
+        trackedMediaBytes > 0 ? trackedMediaBytes : currentMediaBytes(record.data);
       const jsonBytes = pagesJsonBytes(record.data.pages || []);
       if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
         return res.status(413).json({
