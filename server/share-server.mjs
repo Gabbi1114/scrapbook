@@ -12,7 +12,11 @@ import { promises as fsp } from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
 import multer from "multer";
 import sharp from "sharp";
 import ffmpegPath from "ffmpeg-static";
@@ -30,10 +34,7 @@ const R2_BUCKET = process.env.R2_BUCKET || "";
 const PUBLIC_API_BASE = process.env.PUBLIC_API_BASE || "";
 
 const hasR2Config =
-  R2_ENDPOINT &&
-  R2_ACCESS_KEY_ID &&
-  R2_SECRET_ACCESS_KEY &&
-  R2_BUCKET;
+  R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET;
 const MAX_SHARE_BYTES = 15 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 60;
 const execFileAsync = promisify(execFile);
@@ -59,8 +60,23 @@ app.use(express.json({ limit: "80mb" }));
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,PUT,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Scrapbook-Create-Secret");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, X-Scrapbook-Create-Secret",
+  );
   if (req.method === "OPTIONS") return res.status(204).end();
+
+  // Prevent all API responses from being cached by browsers or CDNs.
+  if (req.path.startsWith("/api/")) {
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate",
+    );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+  }
+
   next();
 });
 
@@ -252,16 +268,21 @@ app.post("/api/share", async (req, res) => {
         return res.status(403).json({ error: "Forbidden" });
       }
     }
-    const { v, pages, editDays, musicUrl } = req.body;
+    const { v, pages, editDays, musicUrl, appBackgroundImage } = req.body;
     if (v !== 1 || !Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
     const envMax = Number(process.env.SHARE_MAX_EDIT_DAYS);
-    const maxDays = Number.isFinite(envMax) && envMax > 0
-      ? Math.min(Math.floor(envMax), 3650)
-      : 365;
+    const maxDays =
+      Number.isFinite(envMax) && envMax > 0
+        ? Math.min(Math.floor(envMax), 3650)
+        : 365;
     let editUntil = null;
-    if (typeof editDays === "number" && Number.isFinite(editDays) && editDays > 0) {
+    if (
+      typeof editDays === "number" &&
+      Number.isFinite(editDays) &&
+      editDays > 0
+    ) {
       const days = Math.min(Math.max(1, Math.floor(editDays)), maxDays);
       editUntil = new Date(Date.now() + days * 86400000).toISOString();
     }
@@ -278,6 +299,9 @@ app.post("/api/share", async (req, res) => {
       mediaBytes: 0,
       ...(typeof musicUrl === "string" && musicUrl.trim()
         ? { musicUrl: musicUrl.trim() }
+        : {}),
+      ...(typeof appBackgroundImage === "string" && appBackgroundImage.trim()
+        ? { appBackgroundImage: appBackgroundImage.trim() }
         : {}),
       ...(editUntil ? { editUntil } : {}),
     };
@@ -306,7 +330,7 @@ app.post("/api/share/:id/ensure", async (req, res) => {
     if (existing) {
       return res.json({ ok: true, existed: true });
     }
-    const { v, pages, musicUrl } = req.body;
+    const { v, pages, musicUrl, appBackgroundImage } = req.body;
     if (v !== 1 || !Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
@@ -322,6 +346,9 @@ app.post("/api/share/:id/ensure", async (req, res) => {
       mediaBytes: 0,
       ...(typeof musicUrl === "string" && musicUrl.trim()
         ? { musicUrl: musicUrl.trim() }
+        : {}),
+      ...(typeof appBackgroundImage === "string" && appBackgroundImage.trim()
+        ? { appBackgroundImage: appBackgroundImage.trim() }
         : {}),
     };
     await persistShare(id, payload);
@@ -354,7 +381,7 @@ app.put("/api/share/:id", async (req, res) => {
       return res.status(403).json({ error: "edit window expired" });
     }
 
-    const { v, pages, musicUrl } = req.body;
+    const { v, pages, musicUrl, appBackgroundImage } = req.body;
     if (v !== 1 || !Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
@@ -374,6 +401,11 @@ app.put("/api/share/:id", async (req, res) => {
         ? { musicUrl: musicUrl.trim() }
         : typeof prev?.musicUrl === "string"
           ? { musicUrl: prev.musicUrl }
+          : {}),
+      ...(typeof appBackgroundImage === "string"
+        ? { appBackgroundImage: appBackgroundImage.trim() }
+        : typeof prev?.appBackgroundImage === "string"
+          ? { appBackgroundImage: prev.appBackgroundImage }
           : {}),
       ...(editUntil ? { editUntil } : {}),
     };
@@ -410,83 +442,91 @@ app.post("/api/share/:id/finalize", async (req, res) => {
   }
 });
 
-app.post("/api/share/:id/upload-media", upload.single("file"), async (req, res) => {
-  try {
-    if (!r2) {
-      return res.status(503).json({
-        error:
-          "R2 is not configured. Set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET.",
-      });
-    }
-    const record = await loadShareOrNull(req.params.id);
-    if (!record) return res.status(404).json({ error: "share not found" });
-    const editUntil =
-      typeof record.data?.editUntil === "string" ? record.data.editUntil : null;
-    if (editUntil && Date.now() > Date.parse(editUntil)) {
-      return res.status(403).json({ error: "edit window expired" });
-    }
-
-    const file = req.file;
-    if (!file?.buffer || file.buffer.length === 0) {
-      return res.status(400).json({ error: "file is required" });
-    }
-    const mime = String(file.mimetype || "").toLowerCase();
-    let converted;
-    if (isImageMime(mime)) {
-      converted = await convertImageForStorage(file.buffer, mime);
-    } else if (isVideoMime(mime)) {
-      try {
-        converted = await transcodeVideoForStorage(file.buffer, mime);
-      } catch (e) {
-        if (e?.code === "VIDEO_TOO_LONG") {
-          return res.status(413).json({ error: "One video can be maximum 1 minute." });
-        }
-        throw e;
+app.post(
+  "/api/share/:id/upload-media",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!r2) {
+        return res.status(503).json({
+          error:
+            "R2 is not configured. Set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET.",
+        });
       }
-    } else {
-      return res.status(400).json({
-        error: "Only image/video upload is supported.",
+      const record = await loadShareOrNull(req.params.id);
+      if (!record) return res.status(404).json({ error: "share not found" });
+      const editUntil =
+        typeof record.data?.editUntil === "string"
+          ? record.data.editUntil
+          : null;
+      if (editUntil && Date.now() > Date.parse(editUntil)) {
+        return res.status(403).json({ error: "edit window expired" });
+      }
+
+      const file = req.file;
+      if (!file?.buffer || file.buffer.length === 0) {
+        return res.status(400).json({ error: "file is required" });
+      }
+      const mime = String(file.mimetype || "").toLowerCase();
+      let converted;
+      if (isImageMime(mime)) {
+        converted = await convertImageForStorage(file.buffer, mime);
+      } else if (isVideoMime(mime)) {
+        try {
+          converted = await transcodeVideoForStorage(file.buffer, mime);
+        } catch (e) {
+          if (e?.code === "VIDEO_TOO_LONG") {
+            return res
+              .status(413)
+              .json({ error: "One video can be maximum 1 minute." });
+          }
+          throw e;
+        }
+      } else {
+        return res.status(400).json({
+          error: "Only image/video upload is supported.",
+        });
+      }
+      const mediaBytes = currentMediaBytes(record.data);
+      const jsonBytes = pagesJsonBytes(record.data.pages || []);
+      if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
+        return res.status(413).json({
+          error: "Storage limit reached (15MB per link).",
+        });
+      }
+
+      const objectName = `${Date.now()}-${randomBytes(6).toString("hex")}${converted.ext}`;
+      const key = `${path.basename(req.params.id)}/${objectName}`;
+
+      await r2.send(
+        new PutObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: key,
+          ContentType: converted.contentType,
+          Body: converted.body,
+        }),
+      );
+
+      const updatedShare = {
+        ...record.data,
+        mediaBytes: mediaBytes + converted.body.length,
+      };
+      await persistShare(req.params.id, updatedShare);
+
+      const base = PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`;
+      const objectUrl = `${base}/api/media/${encodeURIComponent(key)}`;
+      res.json({
+        objectUrl,
+        key,
+        bytesUsed: updatedShare.mediaBytes,
+        bytesLimit: MAX_SHARE_BYTES,
       });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: String(e) });
     }
-    const mediaBytes = currentMediaBytes(record.data);
-    const jsonBytes = pagesJsonBytes(record.data.pages || []);
-    if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
-      return res.status(413).json({
-        error: "Storage limit reached (15MB per link).",
-      });
-    }
-
-    const objectName = `${Date.now()}-${randomBytes(6).toString("hex")}${converted.ext}`;
-    const key = `${path.basename(req.params.id)}/${objectName}`;
-
-    await r2.send(new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: key,
-      ContentType: converted.contentType,
-      Body: converted.body,
-    }));
-
-    const updatedShare = {
-      ...record.data,
-      mediaBytes: mediaBytes + converted.body.length,
-    };
-    await persistShare(req.params.id, updatedShare);
-
-    const base =
-      PUBLIC_API_BASE ||
-      `${req.protocol}://${req.get("host")}`;
-    const objectUrl = `${base}/api/media/${encodeURIComponent(key)}`;
-    res.json({
-      objectUrl,
-      key,
-      bytesUsed: updatedShare.mediaBytes,
-      bytesLimit: MAX_SHARE_BYTES,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: String(e) });
-  }
-});
+  },
+);
 
 app.get("/api/media/:key(*)", async (req, res) => {
   try {
@@ -511,5 +551,7 @@ app.get("/api/media/:key(*)", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[scrapbook share] http://localhost:${PORT}  (POST /api/share, GET /api/share/:id)`);
+  console.log(
+    `[scrapbook share] http://localhost:${PORT}  (POST /api/share, GET /api/share/:id)`,
+  );
 });

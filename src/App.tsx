@@ -11,6 +11,7 @@ import {
   useTransform,
   useSpring,
   useDragControls,
+  MotionConfig,
 } from "motion/react";
 import {
   ChevronLeft,
@@ -45,6 +46,12 @@ import {
   useBookStageScale,
 } from "./bookStage";
 import { EditorPanelBody, type EditorAccordionId } from "./EditorPanelBody";
+
+// ─── z-index layering constants ───────────────────────────────────────────────
+const Z_STEP = 1;
+const Z_JUMP = 10;
+const Z_MIN = 1;
+const Z_MAX = 200;
 
 declare global {
   interface Window {
@@ -334,6 +341,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function cssImageUrl(url: string): string {
+  return `url(${JSON.stringify(url)})`;
+}
+
 async function fetchSharedBundleWithAttempts(
   id: string,
   attempts: number,
@@ -359,7 +370,11 @@ async function fetchBundleWithRetry(
   id: string,
   attempts: number = 3,
 ): Promise<Awaited<ReturnType<typeof fetchSharedBundleById>>> {
-  return fetchSharedBundleWithAttempts(id, attempts, BOOTSTRAP_NETWORK_TIMEOUT_MS);
+  return fetchSharedBundleWithAttempts(
+    id,
+    attempts,
+    BOOTSTRAP_NETWORK_TIMEOUT_MS,
+  );
 }
 
 async function optimizeImageForUpload(file: File): Promise<File> {
@@ -421,7 +436,8 @@ function shouldRenderLeaf(
   if (totalLeaves <= 8) return true;
   if (index === 0 || index === totalLeaves - 1) return true;
   return (
-    Math.abs(index - currentLeaf) <= 2 || Math.abs(index - (currentLeaf - 1)) <= 2
+    Math.abs(index - currentLeaf) <= 2 ||
+    Math.abs(index - (currentLeaf - 1)) <= 2
   );
 }
 
@@ -530,6 +546,7 @@ export default function App() {
   const [showFinalizePrompt, setShowFinalizePrompt] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [appBackgroundColor, setAppBackgroundColor] = useState("#4A5568");
+  const [appBackgroundImageUrl, setAppBackgroundImageUrl] = useState("");
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState("");
   const [hasAudioGesture, setHasAudioGesture] = useState(false);
   const [isYtApiReady, setIsYtApiReady] = useState(false);
@@ -542,7 +559,7 @@ export default function App() {
     null,
   );
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
-  const bendIntensity = 0;
+  const bendIntensity = 1.35;
 
   const [editorPlacement, setEditorPlacement] = useState(() => ({
     left: defaultEditorLeftPx(),
@@ -851,8 +868,15 @@ export default function App() {
       setPanOffset({ x: 0, y: 0 });
       panOffsetRef.current = { x: 0, y: 0 };
     } else {
-      const clamped = clampPan(panOffsetRef.current.x, panOffsetRef.current.y, userZoom);
-      if (clamped.x !== panOffsetRef.current.x || clamped.y !== panOffsetRef.current.y) {
+      const clamped = clampPan(
+        panOffsetRef.current.x,
+        panOffsetRef.current.y,
+        userZoom,
+      );
+      if (
+        clamped.x !== panOffsetRef.current.x ||
+        clamped.y !== panOffsetRef.current.y
+      ) {
         setPanOffset(clamped);
         panOffsetRef.current = clamped;
       }
@@ -885,7 +909,10 @@ export default function App() {
           panOffsetRef.current = { x: 0, y: 0 };
         }
         lastTapTimeRef.current = now;
-        panStartTouchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panStartTouchRef.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+        };
         panStartOffsetRef.current = { ...panOffsetRef.current };
       }
     };
@@ -927,7 +954,10 @@ export default function App() {
         panStartTouchRef.current = null;
       } else if (e.touches.length === 1) {
         // Finger count dropped from 2 → 1, restart pan tracking
-        panStartTouchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panStartTouchRef.current = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+        };
         panStartOffsetRef.current = { ...panOffsetRef.current };
       }
     };
@@ -1026,7 +1056,9 @@ export default function App() {
       setShareLinkLoadError(null);
     }
     const applyShareBundleRef = { current: true };
-    const failsafeMs = sid ? SHARE_BOOTSTRAP_FAILSAFE_MS : BOOTSTRAP_MAX_WAIT_MS;
+    const failsafeMs = sid
+      ? SHARE_BOOTSTRAP_FAILSAFE_MS
+      : BOOTSTRAP_MAX_WAIT_MS;
     const bootstrapFailSafe = window.setTimeout(() => {
       if (!cancelled) {
         if (sid) {
@@ -1052,6 +1084,7 @@ export default function App() {
             setCurrentShareId(sid);
             setPages(bundle.pages);
             setBackgroundMusicUrl(bundle.musicUrl || "");
+            setAppBackgroundImageUrl(bundle.appBackgroundImage || "");
             setShareEditUntilIso(bundle.editUntil);
             setShareStorageUsedBytes(bundle.mediaBytes);
             setSharedViewMode(true);
@@ -1081,6 +1114,7 @@ export default function App() {
           setCurrentShareId(studioRootShareId);
           setPages(bundle.pages);
           setBackgroundMusicUrl(bundle.musicUrl || "");
+          setAppBackgroundImageUrl(bundle.appBackgroundImage || "");
           setShareEditUntilIso(bundle.editUntil);
           setShareStorageUsedBytes(bundle.mediaBytes);
           setSharedViewMode(false);
@@ -1128,7 +1162,11 @@ export default function App() {
 
   const copyShareLink = async () => {
     if (!showPublishLinkUi) return;
-    const resolved = await resolveShareableUrl(pages, backgroundMusicUrl);
+    const resolved = await resolveShareableUrl(
+      pages,
+      backgroundMusicUrl,
+      appBackgroundImageUrl,
+    );
     if (resolved.kind === "hash" || resolved.kind === "server") {
       try {
         await navigator.clipboard.writeText(resolved.url);
@@ -1170,6 +1208,7 @@ export default function App() {
       currentShareId,
       pages,
       backgroundMusicUrl,
+      appBackgroundImageUrl,
       { signal: controller.signal },
     );
     if (r.ok === false && r.error === "aborted") return;
@@ -1209,6 +1248,7 @@ export default function App() {
         currentShareId,
         pages,
         backgroundMusicUrl,
+        appBackgroundImageUrl,
         { signal: controller.signal },
       );
       if (seq !== autosaveSeqRef.current) return;
@@ -1226,6 +1266,7 @@ export default function App() {
       window.clearTimeout(id);
     };
   }, [
+    appBackgroundImageUrl,
     backgroundMusicUrl,
     canSaveToServer,
     currentShareId,
@@ -1427,6 +1468,81 @@ export default function App() {
     updatePagesWithHistory(
       pages.map((p) => (p.id === pageId ? { ...p, background: bg } : p)),
     );
+  };
+
+  const updatePageBackgroundImage = (pageId: string, imageUrl: string) => {
+    const nextImage = imageUrl.trim();
+    updatePagesWithHistory(
+      pages.map((p) => {
+        if (p.id !== pageId) return p;
+        if (nextImage) return { ...p, backgroundImage: nextImage };
+        const { backgroundImage, ...rest } = p;
+        void backgroundImage;
+        return rest;
+      }),
+    );
+  };
+
+  const uploadBackgroundImageFile = async (
+    file: File,
+  ): Promise<string | null> => {
+    if (!file.type.startsWith("image/")) {
+      window.alert("Please choose an image file.");
+      return null;
+    }
+    if (!currentShareId) {
+      window.alert(
+        "Create or open a share link first. Then the image can be uploaded and saved.",
+      );
+      return null;
+    }
+    setShareHint("Background image is uploading...");
+    let preparedFile = file;
+    try {
+      preparedFile = await optimizeImageForUpload(file);
+    } catch {
+      preparedFile = file;
+    }
+    const uploaded = await uploadImageFileForShare(currentShareId, preparedFile);
+    if (uploaded.ok === false) {
+      setShareHint(null);
+      window.alert(toFriendlyUploadError(uploaded.error, "image"));
+      return null;
+    }
+    if (typeof uploaded.bytesUsed === "number") {
+      setShareStorageUsedBytes(uploaded.bytesUsed);
+    }
+    if (typeof uploaded.bytesLimit === "number") {
+      setShareStorageLimitBytes(uploaded.bytesLimit);
+    }
+    setShareHint("Background image updated.");
+    window.setTimeout(() => setShareHint(null), 1400);
+    return uploaded.url;
+  };
+
+  const handlePageBackgroundImageUpload = (
+    pageId: string,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void (async () => {
+      const url = await uploadBackgroundImageFile(file);
+      if (url) updatePageBackgroundImage(pageId, url);
+    })();
+    e.target.value = "";
+  };
+
+  const handleAppBackgroundImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void (async () => {
+      const url = await uploadBackgroundImageFile(file);
+      if (url) setAppBackgroundImageUrl(url);
+    })();
+    e.target.value = "";
   };
 
   const updatePagePattern = (pageId: string, pattern: string) => {
@@ -1646,6 +1762,17 @@ export default function App() {
       back: pages[i * 2 + 1],
     });
   }
+  const transformStageDragPoint = useCallback(
+    (point: { x: number; y: number }) => {
+      const scale = stageScale * userZoom;
+      if (scale <= 0) return point;
+      return {
+        x: point.x / scale,
+        y: point.y / scale,
+      };
+    },
+    [stageScale, userZoom],
+  );
 
   if (shouldLockStudio) {
     return (
@@ -1693,6 +1820,17 @@ export default function App() {
     );
   }
 
+  const appBackgroundImage = appBackgroundImageUrl.trim();
+  const appShellStyle: React.CSSProperties = appBackgroundImage
+    ? {
+        backgroundColor: appBackgroundColor,
+        backgroundImage: cssImageUrl(appBackgroundImage),
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "cover",
+      }
+    : { backgroundColor: appBackgroundColor };
+
   return (
     <>
       {shareLinkLoadError && (
@@ -1716,7 +1854,7 @@ export default function App() {
       )}
       <div
         className="h-dvh font-sans flex touch-auto flex-col overflow-hidden"
-        style={{ backgroundColor: appBackgroundColor }}
+        style={appShellStyle}
       >
         {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
         <div className="flex-1 relative min-h-0">
@@ -1802,11 +1940,12 @@ export default function App() {
                       height: BOOK_STAGE_HEIGHT * stageScale,
                       transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${userZoom})`,
                       transformOrigin: "center center",
-                      transition: userZoom === 1 ? "transform 0.25s ease" : "none",
+                      transition:
+                        userZoom === 1 ? "transform 0.25s ease" : "none",
                     }}
                   >
                     <div
-                      className="absolute left-0 top-0 perspective-[1500px] preserve-3d"
+                      className="book-perspective absolute left-0 top-0 preserve-3d"
                       style={{
                         width: BOOK_STAGE_WIDTH,
                         height: BOOK_STAGE_HEIGHT,
@@ -1818,33 +1957,13 @@ export default function App() {
                       }}
                     >
                       {isEditing ? (
-                        <EditingSpread
-                          pages={pages}
-                          visibleLeftPageId={visibleLeftPageId}
-                          visibleRightPageId={visibleRightPageId}
-                          selectedElementId={selectedElementId}
-                          setSelectedElementId={setSelectedElementId}
-                          updateElement={updateElement}
-                          onVideoAudibleChange={setVideoAudible}
-                          onDropImageIntoPolaroid={dropImageIntoPolaroid}
-                          isVideoMuted={isVideoMuted}
-                          setVideoMuted={setVideoMuted}
-                          selectedPageId={selectedPageId}
-                          setSelectedPageId={setSelectedPageId}
-                        />
-                      ) : (
-                        leaves.map((leaf, i) => {
-                          if (!shouldRenderLeaf(i, currentLeaf, totalLeaves)) {
-                            return null;
-                          }
-                          return (
-                          <FlipPage
-                            key={i}
-                            leaf={leaf}
-                            i={i}
-                            currentLeaf={currentLeaf}
-                            totalLeaves={totalLeaves}
-                            isEditing={false}
+                        <MotionConfig
+                          transformPagePoint={transformStageDragPoint}
+                        >
+                          <EditingSpread
+                            pages={pages}
+                            visibleLeftPageId={visibleLeftPageId}
+                            visibleRightPageId={visibleRightPageId}
                             selectedElementId={selectedElementId}
                             setSelectedElementId={setSelectedElementId}
                             updateElement={updateElement}
@@ -1854,9 +1973,33 @@ export default function App() {
                             setVideoMuted={setVideoMuted}
                             selectedPageId={selectedPageId}
                             setSelectedPageId={setSelectedPageId}
-                            bendIntensity={bendIntensity}
-                            liteMode={preferLiteEffects}
                           />
+                        </MotionConfig>
+                      ) : (
+                        leaves.map((leaf, i) => {
+                          if (!shouldRenderLeaf(i, currentLeaf, totalLeaves)) {
+                            return null;
+                          }
+                          return (
+                            <FlipPage
+                              key={i}
+                              leaf={leaf}
+                              i={i}
+                              currentLeaf={currentLeaf}
+                              totalLeaves={totalLeaves}
+                              isEditing={false}
+                              selectedElementId={selectedElementId}
+                              setSelectedElementId={setSelectedElementId}
+                              updateElement={updateElement}
+                              onVideoAudibleChange={setVideoAudible}
+                              onDropImageIntoPolaroid={dropImageIntoPolaroid}
+                              isVideoMuted={isVideoMuted}
+                              setVideoMuted={setVideoMuted}
+                              selectedPageId={selectedPageId}
+                              setSelectedPageId={setSelectedPageId}
+                              bendIntensity={bendIntensity}
+                              liteMode={preferLiteEffects}
+                            />
                           );
                         })
                       )}
@@ -2056,13 +2199,20 @@ export default function App() {
                   setOpenAccordion={setOpenAccordion}
                   appBackgroundColor={appBackgroundColor}
                   setAppBackgroundColor={setAppBackgroundColor}
+                  appBackgroundImageUrl={appBackgroundImageUrl}
+                  setAppBackgroundImageUrl={setAppBackgroundImageUrl}
                   backgroundMusicUrl={backgroundMusicUrl}
                   setBackgroundMusicUrl={setBackgroundMusicUrl}
                   saveMusicLink={saveMusicLinkNow}
                   addElement={addElement}
                   handleImageUpload={handleImageUpload}
                   handleVideoUpload={handleVideoUpload}
+                  handlePageBackgroundImageUpload={
+                    handlePageBackgroundImageUpload
+                  }
+                  handleAppBackgroundImageUpload={handleAppBackgroundImageUpload}
                   updatePageBackground={updatePageBackground}
+                  updatePageBackgroundImage={updatePageBackgroundImage}
                   updatePagePattern={updatePagePattern}
                   updateElement={updateElement}
                   updatePagesWithHistory={updatePagesWithHistory}
@@ -2294,9 +2444,9 @@ function FlipPage({
   const rotateYTarget = useMotionValue(isFlipped ? -180 : 0);
   // Slightly softer spring for a "heavy paper" feel
   const rotateY = useSpring(rotateYTarget, {
-    stiffness: liteMode ? 50 : 55,
-    damping: liteMode ? 20 : 16,
-    mass: 1,
+    stiffness: liteMode ? 62 : 58,
+    damping: liteMode ? 22 : 18,
+    mass: liteMode ? 0.95 : 1.05,
     restDelta: 0.01,
   });
 
@@ -2308,21 +2458,15 @@ function FlipPage({
   const z = useTransform(
     rotateY,
     [-180, -90, 0],
-    liteMode ? [i * 0.8, 16, -i * 0.8] : [i * 1.5, 50, -i * 1.5],
+    liteMode ? [i * 0.8, 22, -i * 0.8] : [i * 1.5, 58, -i * 1.5],
     { clamp: true },
   );
 
-  // Paper bending effect (droop) - more subtle and realistic
+  // Paper bending effect (droop) - subtle enough for iPhone Safari.
   const rotateXTarget = useTransform(
     rotateY,
     [-180, -90, 0],
-    liteMode ? [0, 0, 0] : [0, bendIntensity, 0],
-    { clamp: true },
-  );
-  const rotateZTarget = useTransform(
-    rotateY,
-    [-180, -90, 0],
-    liteMode ? [0, 0, 0] : [0, -bendIntensity, 0],
+    liteMode ? [0, bendIntensity * 0.35, 0] : [0, bendIntensity, 0],
     { clamp: true },
   );
 
@@ -2332,17 +2476,12 @@ function FlipPage({
     damping: 15,
     mass: 1,
   });
-  const rotateZ = useSpring(rotateZTarget, {
-    stiffness: 45,
-    damping: 15,
-    mass: 1,
-  });
 
   // Dynamic lighting/shading to simulate curvature
   const frontLightingOpacity = useTransform(
     rotateY,
     [-90, 0],
-    liteMode ? [0, 0] : [0.5, 0],
+    liteMode ? [0.22, 0] : [0.48, 0],
     {
       clamp: true,
     },
@@ -2350,7 +2489,37 @@ function FlipPage({
   const backLightingOpacity = useTransform(
     rotateY,
     [-180, -90],
-    liteMode ? [0, 0] : [0, 0.5],
+    liteMode ? [0, 0.22] : [0, 0.48],
+    { clamp: true },
+  );
+  const foldOpacity = useTransform(
+    rotateY,
+    [-180, -135, -90, -45, 0],
+    liteMode ? [0.06, 0.16, 0.3, 0.16, 0.04] : [0.08, 0.26, 0.58, 0.26, 0.06],
+    { clamp: true },
+  );
+  const edgeOpacity = useTransform(
+    rotateY,
+    [-180, -135, -90, -45, 0],
+    liteMode ? [0.12, 0.22, 0.38, 0.22, 0.12] : [0.18, 0.34, 0.68, 0.34, 0.18],
+    { clamp: true },
+  );
+  const paperBackGlowOpacity = useTransform(
+    rotateY,
+    [-180, -90, 0],
+    liteMode ? [0.04, 0.16, 0.04] : [0.06, 0.3, 0.06],
+    { clamp: true },
+  );
+  const curlOpacity = useTransform(
+    rotateY,
+    [-180, -150, -90, -30, 0],
+    liteMode ? [0, 0.16, 0.34, 0.16, 0] : [0, 0.26, 0.62, 0.26, 0],
+    { clamp: true },
+  );
+  const curlScaleX = useTransform(
+    rotateY,
+    [-180, -150, -90, -30, 0],
+    [0.34, 0.72, 1, 0.72, 0.34],
     { clamp: true },
   );
 
@@ -2358,7 +2527,7 @@ function FlipPage({
   const shadowOpacity = useTransform(
     rotateY,
     [-180, -90, 0],
-    liteMode ? [0, 0, 0] : [0, 0.25, 0],
+    liteMode ? [0, 0.12, 0] : [0, 0.32, 0],
     { clamp: true },
   );
   const shadowX = useTransform(
@@ -2366,7 +2535,7 @@ function FlipPage({
     [-180, -90, 0],
     ["-100%", "-50%", "0%"],
   );
-  const shadowScale = useTransform(rotateY, [-180, -90, 0], [1, 1.1, 1]);
+  const shadowScale = useTransform(rotateY, [-180, -90, 0], [1, 1.18, 1]);
   const shadowZIndex = useTransform(zIndex, (z) => z - 1);
 
   useEffect(() => {
@@ -2390,18 +2559,17 @@ function FlipPage({
       )}
 
       <motion.div
-        className={`absolute top-0 left-1/2 w-1/2 h-full origin-left preserve-3d ${!isInteractive ? "pointer-events-none" : ""}`}
+        className={`paper-flip-leaf absolute top-0 left-1/2 w-1/2 h-full origin-left preserve-3d ${!isInteractive ? "pointer-events-none" : ""}`}
         style={{
           rotateY,
           rotateX,
-          rotateZ,
           zIndex,
           z,
         }}
       >
         {/* Front Page (Right side when not flipped) */}
         <motion.div
-          className={`absolute inset-0 backface-hidden bg-white shadow-[0_2px_10px_rgba(0,0,0,0.1)] overflow-hidden rounded-r-2xl rounded-l-sm border border-black/10 border-r-black/20 ${isFlipped ? "pointer-events-none" : ""}`}
+          className={`paper-face paper-face--front absolute inset-0 backface-hidden bg-white shadow-[0_2px_10px_rgba(0,0,0,0.1)] overflow-hidden rounded-r-2xl rounded-l-sm border border-black/10 border-r-black/20 ${isFlipped ? "pointer-events-none" : ""}`}
           style={{ transform: "translateZ(0.5px)" }}
         >
           <PageContent
@@ -2421,12 +2589,33 @@ function FlipPage({
           {/* Static spine shadow */}
           <div className="absolute inset-y-0 left-0 pointer-events-none bg-gradient-to-r from-black/10 to-transparent w-12 z-50" />
 
-          {!liteMode && (
+          <div className="paper-fiber-overlay" />
+
+          {isInteractive && (
+            <>
+              <motion.div
+                className="paper-fold-shadow paper-fold-shadow--front"
+                style={{ opacity: foldOpacity }}
+              />
+              <motion.div
+                className="paper-edge-highlight paper-edge-highlight--front"
+                style={{ opacity: edgeOpacity }}
+              />
+              <motion.div
+                className="paper-back-glow paper-back-glow--front"
+                style={{ opacity: paperBackGlowOpacity }}
+              />
+              <motion.div
+                className="paper-curl-lip paper-curl-lip--front"
+                style={{ opacity: curlOpacity, scaleX: curlScaleX }}
+              />
+            </>
+          )}
+
+          {isInteractive && (
             <motion.div
-              className="absolute inset-0 pointer-events-none z-50"
+              className="paper-turn-light paper-turn-light--front"
               style={{
-                background:
-                  "linear-gradient(to right, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 30%, rgba(255,255,255,0.4) 100%)",
                 opacity: frontLightingOpacity,
               }}
             />
@@ -2435,7 +2624,7 @@ function FlipPage({
 
         {/* Back Page (Left side when flipped) */}
         <motion.div
-          className={`absolute inset-0 backface-hidden bg-white shadow-[0_2px_10px_rgba(0,0,0,0.1)] overflow-hidden rounded-l-2xl rounded-r-sm border border-black/10 border-l-black/20 ${!isFlipped ? "pointer-events-none" : ""}`}
+          className={`paper-face paper-face--back absolute inset-0 backface-hidden bg-white shadow-[0_2px_10px_rgba(0,0,0,0.1)] overflow-hidden rounded-l-2xl rounded-r-sm border border-black/10 border-l-black/20 ${!isFlipped ? "pointer-events-none" : ""}`}
           style={{ transform: "rotateY(180deg) translateZ(0.5px)" }}
         >
           <PageContent
@@ -2455,12 +2644,33 @@ function FlipPage({
           {/* Static spine shadow */}
           <div className="absolute inset-y-0 right-0 pointer-events-none bg-gradient-to-l from-black/10 to-transparent w-12 z-50" />
 
-          {!liteMode && (
+          <div className="paper-fiber-overlay" />
+
+          {isInteractive && (
+            <>
+              <motion.div
+                className="paper-fold-shadow paper-fold-shadow--back"
+                style={{ opacity: foldOpacity }}
+              />
+              <motion.div
+                className="paper-edge-highlight paper-edge-highlight--back"
+                style={{ opacity: edgeOpacity }}
+              />
+              <motion.div
+                className="paper-back-glow paper-back-glow--back"
+                style={{ opacity: paperBackGlowOpacity }}
+              />
+              <motion.div
+                className="paper-curl-lip paper-curl-lip--back"
+                style={{ opacity: curlOpacity, scaleX: curlScaleX }}
+              />
+            </>
+          )}
+
+          {isInteractive && (
             <motion.div
-              className="absolute inset-0 pointer-events-none z-50"
+              className="paper-turn-light paper-turn-light--back"
               style={{
-                background:
-                  "linear-gradient(to left, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 30%, rgba(255,255,255,0.4) 100%)",
                 opacity: backLightingOpacity,
               }}
             />
@@ -2506,13 +2716,24 @@ function PageContent({
 }) {
   if (!page) return <div className="w-full h-full bg-stone-200" />;
   const useClassBackground = page.background.startsWith("bg-");
+  const pageBackgroundImage = page.backgroundImage?.trim();
+  const pageBackgroundStyle: React.CSSProperties | undefined =
+    pageBackgroundImage
+      ? {
+          ...(useClassBackground ? {} : { backgroundColor: page.background }),
+          backgroundImage: cssImageUrl(pageBackgroundImage),
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "cover",
+        }
+      : useClassBackground
+        ? undefined
+        : { backgroundColor: page.background };
 
   return (
     <div
       className={`w-full h-full relative ${useClassBackground ? page.background : ""} ${page.pattern} transition-all ${isActive && isEditing ? "ring-inset ring-4 ring-rose-400" : ""}`}
-      style={
-        useClassBackground ? undefined : { backgroundColor: page.background }
-      }
+      style={pageBackgroundStyle}
       onClick={(e) => {
         if (isEditing) {
           onSelectPage();
@@ -2783,8 +3004,8 @@ function DraggableElement({
       onDragEnd={(e, info) => {
         const next = {
           ...element,
-          x: element.x + info.offset.x * inv,
-          y: element.y + info.offset.y * inv,
+          x: element.x + info.offset.x,
+          y: element.y + info.offset.y,
         };
         if (
           element.type === "sticker" &&
@@ -2818,12 +3039,11 @@ function DraggableElement({
           onSelect();
         }
       }}
-      className={`absolute ${isEditing ? "cursor-move" : ""} ${isSelected && isEditing ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-transparent z-50" : "z-10"}`}
+      className={`scrapbook-element absolute ${isEditing ? "cursor-move" : ""} ${isSelected && isEditing ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-transparent" : ""}`}
+      style={{ "--item-z": element.zIndex ?? 10 } as React.CSSProperties}
       initial={{ x: element.x, y: element.y, rotate: element.rotation }}
       animate={{ x: element.x, y: element.y, rotate: element.rotation }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      whileHover={isEditing ? { scale: 1.05 } : {}}
-      whileTap={isEditing ? { scale: 0.95 } : {}}
     >
       {element.type === "text" && (
         <div
@@ -2961,6 +3181,33 @@ function DraggableElement({
               />
             </>
           )}
+          {/* ── Layer controls: To Front / To Back ── */}
+          <button
+            type="button"
+            data-transform-handle="true"
+            title="Bring to front"
+            onClick={(e) => {
+              e.stopPropagation();
+              const cur = element.zIndex ?? 10;
+              onUpdate({ ...element, zIndex: Math.min(Z_MAX, cur + Z_JUMP) });
+            }}
+            className="layer-btn layer-btn--front"
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            data-transform-handle="true"
+            title="Send to back"
+            onClick={(e) => {
+              e.stopPropagation();
+              const cur = element.zIndex ?? 10;
+              onUpdate({ ...element, zIndex: Math.max(Z_MIN, cur - Z_JUMP) });
+            }}
+            className="layer-btn layer-btn--back"
+          >
+            ▼
+          </button>
         </>
       )}
     </motion.div>

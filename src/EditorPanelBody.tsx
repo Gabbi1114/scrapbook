@@ -213,13 +213,18 @@ export function EditorPanelBody({
   setOpenAccordion,
   appBackgroundColor,
   setAppBackgroundColor,
+  appBackgroundImageUrl,
+  setAppBackgroundImageUrl,
   backgroundMusicUrl,
   setBackgroundMusicUrl,
   saveMusicLink,
   addElement,
   handleImageUpload,
   handleVideoUpload,
+  handlePageBackgroundImageUpload,
+  handleAppBackgroundImageUpload,
   updatePageBackground,
+  updatePageBackgroundImage,
   updatePagePattern,
   updateElement,
   updatePagesWithHistory,
@@ -234,6 +239,8 @@ export function EditorPanelBody({
   setOpenAccordion: Dispatch<SetStateAction<EditorAccordionId | null>>;
   appBackgroundColor: string;
   setAppBackgroundColor: (v: string) => void;
+  appBackgroundImageUrl: string;
+  setAppBackgroundImageUrl: (v: string) => void;
   backgroundMusicUrl: string;
   setBackgroundMusicUrl: (v: string) => void;
   saveMusicLink: () => void;
@@ -245,7 +252,13 @@ export function EditorPanelBody({
   ) => void;
   handleImageUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
   handleVideoUpload: (pageId: string, e: ChangeEvent<HTMLInputElement>) => void;
+  handlePageBackgroundImageUpload: (
+    pageId: string,
+    e: ChangeEvent<HTMLInputElement>,
+  ) => void;
+  handleAppBackgroundImageUpload: (e: ChangeEvent<HTMLInputElement>) => void;
   updatePageBackground: (pageId: string, bg: string) => void;
+  updatePageBackgroundImage: (pageId: string, imageUrl: string) => void;
   updatePagePattern: (pageId: string, pattern: string) => void;
   updateElement: (
     pageId: string,
@@ -462,6 +475,18 @@ export function EditorPanelBody({
     void searchGraphics();
   };
 
+  const selectedEl = pages
+    .flatMap((p) => p.elements)
+    .find((e) => e.id === selectedElementId);
+  const selectedPageBg = selectedPageId
+    ? pages.find((p) => p.id === selectedPageId)?.background || ""
+    : "";
+  const selectedPageBgImage = selectedPageId
+    ? pages.find((p) => p.id === selectedPageId)?.backgroundImage || ""
+    : "";
+  const graphicItems =
+    graphicResults.length > 0 ? graphicResults : GRAPHIC_PRESETS;
+
   if (!selectedPageId) {
     return (
       <p className="py-8 text-center text-sm text-stone-500">
@@ -470,11 +495,6 @@ export function EditorPanelBody({
     );
   }
 
-  const selectedEl = pages
-    .flatMap((p) => p.elements)
-    .find((e) => e.id === selectedElementId);
-  const selectedPageBg =
-    pages.find((p) => p.id === selectedPageId)?.background || "";
   const colorValue = /^#[0-9a-f]{6}$/i.test(selectedPageBg)
     ? selectedPageBg
     : selectedPageBg === "bg-rose-200"
@@ -487,11 +507,9 @@ export function EditorPanelBody({
             ? "#f0fdf4"
             : selectedPageBg === "bg-purple-50"
               ? "#faf5ff"
-              : selectedPageBg === "bg-yellow-50"
-                ? "#fefce8"
-                : "#f5f5f4";
-  const graphicItems =
-    graphicResults.length > 0 ? graphicResults : GRAPHIC_PRESETS;
+          : selectedPageBg === "bg-yellow-50"
+            ? "#fefce8"
+            : "#f5f5f4";
 
   const toHexInputValue = (v: string | undefined, fallback: string) =>
     /^#[0-9a-f]{6}$/i.test(v || "") ? (v as string) : fallback;
@@ -766,6 +784,32 @@ export function EditorPanelBody({
             </div>
           </div>
           <div>
+            <p className="mb-2 text-xs text-stone-500">
+              Page background image
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 hover:bg-rose-50">
+                Choose image
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) =>
+                    handlePageBackgroundImageUpload(selectedPageId, e)
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => updatePageBackgroundImage(selectedPageId, "")}
+                disabled={!selectedPageBgImage}
+                className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div>
             <p className="mb-2 text-xs text-stone-500">Үндсэн дэвсгэр өнгө</p>
             <div className="flex items-center gap-2">
               <input
@@ -784,6 +828,30 @@ export function EditorPanelBody({
                 title="Зурагнаас өнгө авах"
               >
                 <Pipette size={16} />
+              </button>
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-xs text-stone-500">
+              App background image
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 hover:bg-rose-50">
+                Choose image
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAppBackgroundImageUpload}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setAppBackgroundImageUrl("")}
+                disabled={!appBackgroundImageUrl}
+                className="min-h-11 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-600 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Clear
               </button>
             </div>
           </div>

@@ -145,17 +145,351 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* ─── Text-selection fix ────────────────────────────────────────────────────
+   Prevent unwanted blue highlight on non-editable UI elements during editing.
+   Cross-browser: webkit (iOS/Safari/Chrome), moz (Firefox), ms (IE/Edge legacy).
+   Only actual contenteditable / input / textarea nodes re-enable selection.
+   ─────────────────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  /* Prevent iOS callout (copy/paste bubble) on long-press of non-text nodes */
+  -webkit-touch-callout: none;
+}
+
+/* Re-enable selection only where the user actually types */
+input,
+textarea,
+[contenteditable="true"],
+[contenteditable=""] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* ─── Z-index layering helpers ──────────────────────────────────────────────
+   Per-element z-index driven by a CSS custom property set inline.
+   Default stack order follows DOM; override with data-z attribute.
+   ─────────────────────────────────────────────────────────────────────────── */
+.scrapbook-element {
+  z-index: var(--item-z, 10);
+}
+
+/* ─── Layer control buttons ─────────────────────────────────────────────────
+   Small floating buttons shown on selected element for bring-forward / send-back.
+   ─────────────────────────────────────────────────────────────────────────── */
+.layer-btn {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  background: #1e293b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  touch-action: manipulation;
+  /* Prevent text selection on rapid taps */
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 70;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+.layer-btn:active {
+  transform: scale(0.88);
+  background: #0f172a;
+}
+.layer-btn--front {
+  bottom: -28px;
+  right: 20px;
+}
+.layer-btn--back {
+  bottom: -28px;
+  right: 46px;
+}
+
+/* ─── Page flip enhancements ────────────────────────────────────────────────
+   Realistic curl shadow + edge highlight during 3-D flip.
+   ─────────────────────────────────────────────────────────────────────────── */
+.page-curl-shadow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0.06) 18%,
+    transparent 40%
+  );
+  border-radius: inherit;
+  z-index: 55;
+}
+
+/* Real-paper page turn: lightweight CSS-only shading for the existing 3-D flip. */
+.book-perspective {
+  perspective: 1200px;
+  -webkit-perspective: 1200px;
+  perspective-origin: 50% 50%;
+  -webkit-perspective-origin: 50% 50%;
+}
+
+.book-perspective::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  z-index: 90;
+  width: 18px;
+  transform: translateX(-50%) translateZ(4px);
+  -webkit-transform: translateX(-50%) translateZ(4px);
+  background:
+    linear-gradient(to right, transparent, rgba(56, 40, 28, 0.24), transparent),
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.16), transparent 64%);
+  opacity: 0.78;
+}
+
+.paper-flip-leaf {
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.paper-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  contain: paint;
+  box-shadow:
+    0 2px 9px rgba(24, 18, 12, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.paper-face--front {
+  box-shadow:
+    0 2px 10px rgba(24, 18, 12, 0.18),
+    inset -8px 0 14px rgba(86, 61, 38, 0.08),
+    inset 1px 0 0 rgba(255, 255, 255, 0.5);
+}
+
+.paper-face--back {
+  box-shadow:
+    0 2px 10px rgba(24, 18, 12, 0.18),
+    inset 8px 0 14px rgba(86, 61, 38, 0.08),
+    inset -1px 0 0 rgba(255, 255, 255, 0.5);
+}
+
+.paper-fiber-overlay,
+.paper-fold-shadow,
+.paper-edge-highlight,
+.paper-back-glow,
+.paper-curl-lip,
+.paper-turn-light {
+  pointer-events: none;
+  position: absolute;
+  transform: translateZ(1px);
+  -webkit-transform: translateZ(1px);
+}
+
+.paper-fiber-overlay {
+  inset: 0;
+  z-index: 45;
+  opacity: 0.18;
+  background-image:
+    radial-gradient(rgba(92, 70, 45, 0.08) 0.55px, transparent 0.75px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(89, 67, 43, 0.035));
+  background-size:
+    14px 14px,
+    100% 100%;
+}
+
+.paper-fold-shadow {
+  top: -2%;
+  bottom: -2%;
+  width: 38%;
+  z-index: 52;
+}
+
+.paper-fold-shadow--front {
+  right: -2px;
+  background:
+    linear-gradient(
+      to left,
+      rgba(22, 16, 10, 0.34) 0%,
+      rgba(58, 42, 26, 0.18) 18%,
+      rgba(255, 255, 255, 0.12) 42%,
+      transparent 74%
+    );
+}
+
+.paper-fold-shadow--back {
+  left: -2px;
+  background:
+    linear-gradient(
+      to right,
+      rgba(22, 16, 10, 0.34) 0%,
+      rgba(58, 42, 26, 0.18) 18%,
+      rgba(255, 255, 255, 0.12) 42%,
+      transparent 74%
+    );
+}
+
+.paper-edge-highlight {
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 54;
+}
+
+.paper-edge-highlight--front {
+  right: -1px;
+  background:
+    linear-gradient(to left, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0)),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.12), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.1));
+}
+
+.paper-edge-highlight--back {
+  left: -1px;
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0)),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.12), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.1));
+}
+
+.paper-back-glow {
+  inset: 0;
+  z-index: 50;
+}
+
+.paper-back-glow--front {
+  background: radial-gradient(ellipse at right center, rgba(255, 255, 255, 0.45), transparent 56%);
+}
+
+.paper-back-glow--back {
+  background: radial-gradient(ellipse at left center, rgba(255, 255, 255, 0.45), transparent 56%);
+}
+
+.paper-curl-lip {
+  top: 0;
+  bottom: 0;
+  z-index: 56;
+  width: 30%;
+  transform: translateZ(2px);
+  -webkit-transform: translateZ(2px);
+}
+
+.paper-curl-lip--front {
+  right: 0;
+  transform-origin: right center;
+  -webkit-transform-origin: right center;
+  background:
+    linear-gradient(
+      to left,
+      rgba(255, 255, 255, 0.78) 0%,
+      rgba(255, 255, 255, 0.34) 14%,
+      rgba(72, 48, 28, 0.2) 36%,
+      rgba(255, 255, 255, 0.08) 58%,
+      transparent 86%
+    );
+}
+
+.paper-curl-lip--back {
+  left: 0;
+  transform-origin: left center;
+  -webkit-transform-origin: left center;
+  background:
+    linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.78) 0%,
+      rgba(255, 255, 255, 0.34) 14%,
+      rgba(72, 48, 28, 0.2) 36%,
+      rgba(255, 255, 255, 0.08) 58%,
+      transparent 86%
+    );
+}
+
+.paper-turn-light {
+  inset: 0;
+  z-index: 55;
+}
+
+.paper-turn-light--front {
+  background:
+    linear-gradient(to right, rgba(0, 0, 0, 0.22), transparent 28%, rgba(255, 255, 255, 0.38) 82%, rgba(255, 255, 255, 0.64)),
+    radial-gradient(ellipse at right center, rgba(0, 0, 0, 0.18), transparent 48%);
+}
+
+.paper-turn-light--back {
+  background:
+    linear-gradient(to left, rgba(0, 0, 0, 0.22), transparent 28%, rgba(255, 255, 255, 0.38) 82%, rgba(255, 255, 255, 0.64)),
+    radial-gradient(ellipse at left center, rgba(0, 0, 0, 0.18), transparent 48%);
+}
+
+.is-ios .paper-fiber-overlay {
+  opacity: 0.11;
+}
+
+.is-ios .paper-fold-shadow {
+  width: 32%;
+}
+
+.is-ios .paper-curl-lip {
+  width: 24%;
+}
+
+/* iOS-specific: disable heavy backdrop-filter to prevent GPU crash */
+.is-ios .backdrop-blur-sm,
+.is-ios .backdrop-blur-md,
+.is-ios [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Smooth drag cursor feedback */
+.cursor-grabbing,
+.cursor-grabbing * {
+  cursor: grabbing !important;
+}
+
+/* Prevent image drag ghost on iOS during element drag */
+img {
+  -webkit-user-drag: none;
+  user-drag: none;
+  pointer-events: none; /* overridden per-element where needed */
+}
+img.interactive {
+  pointer-events: auto;
+}
+
 /* 3D Flipbook CSS */
 .perspective-1500 {
   perspective: 1500px;
+  -webkit-perspective: 1500px;
 }
 
 .preserve-3d {
   transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
 }
 
 .backface-hidden {
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .rotate-y-180 {
@@ -172,17 +506,19 @@ body {
 
 /* Cute Patterns */
 .pattern-polka {
-  background-image: radial-gradient(rgba(0,0,0,0.1) 2px, transparent 2px);
+  background-image: radial-gradient(rgba(0, 0, 0, 0.1) 2px, transparent 2px);
   background-size: 20px 20px;
 }
 
 .pattern-grid {
-  background-image: linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 
 .pattern-lines {
-  background-image: linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px);
   background-size: 100% 24px;
 }
 
@@ -608,97 +944,235 @@ body {
 }
 
 @keyframes wizard-right-arm {
-  0% { transform: rotate(70deg); }
-  10% { transform: rotate(8deg); }
-  15% { transform: rotate(20deg); }
-  20% { transform: rotate(10deg); }
-  25% { transform: rotate(26deg); }
-  30% { transform: rotate(10deg); }
-  35% { transform: rotate(28deg); }
-  40% { transform: rotate(9deg); }
-  45% { transform: rotate(28deg); }
-  50% { transform: rotate(8deg); }
-  58% { transform: rotate(74deg); }
-  62% { transform: rotate(70deg); }
+  0% {
+    transform: rotate(70deg);
+  }
+  10% {
+    transform: rotate(8deg);
+  }
+  15% {
+    transform: rotate(20deg);
+  }
+  20% {
+    transform: rotate(10deg);
+  }
+  25% {
+    transform: rotate(26deg);
+  }
+  30% {
+    transform: rotate(10deg);
+  }
+  35% {
+    transform: rotate(28deg);
+  }
+  40% {
+    transform: rotate(9deg);
+  }
+  45% {
+    transform: rotate(28deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+  58% {
+    transform: rotate(74deg);
+  }
+  62% {
+    transform: rotate(70deg);
+  }
 }
 
 @keyframes wizard-left-arm {
-  0% { transform: rotate(-70deg); }
-  10% { transform: rotate(6deg); }
-  15% { transform: rotate(-18deg); }
-  20% { transform: rotate(5deg); }
-  25% { transform: rotate(-18deg); }
-  30% { transform: rotate(5deg); }
-  35% { transform: rotate(-17deg); }
-  40% { transform: rotate(5deg); }
-  45% { transform: rotate(-18deg); }
-  50% { transform: rotate(6deg); }
-  58% { transform: rotate(-74deg); }
-  62% { transform: rotate(-70deg); }
+  0% {
+    transform: rotate(-70deg);
+  }
+  10% {
+    transform: rotate(6deg);
+  }
+  15% {
+    transform: rotate(-18deg);
+  }
+  20% {
+    transform: rotate(5deg);
+  }
+  25% {
+    transform: rotate(-18deg);
+  }
+  30% {
+    transform: rotate(5deg);
+  }
+  35% {
+    transform: rotate(-17deg);
+  }
+  40% {
+    transform: rotate(5deg);
+  }
+  45% {
+    transform: rotate(-18deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+  58% {
+    transform: rotate(-74deg);
+  }
+  62% {
+    transform: rotate(-70deg);
+  }
 }
 
 @keyframes wizard-right-hand {
-  0% { transform: rotate(-40deg); }
-  10% { transform: rotate(-20deg); }
-  15% { transform: rotate(-5deg); }
-  20% { transform: rotate(-60deg); }
-  25% { transform: rotate(0deg); }
-  30% { transform: rotate(-60deg); }
-  35% { transform: rotate(0deg); }
-  40% { transform: rotate(-40deg); }
-  45% { transform: rotate(-60deg); }
-  50% { transform: rotate(10deg); }
-  60% { transform: rotate(-40deg); }
+  0% {
+    transform: rotate(-40deg);
+  }
+  10% {
+    transform: rotate(-20deg);
+  }
+  15% {
+    transform: rotate(-5deg);
+  }
+  20% {
+    transform: rotate(-60deg);
+  }
+  25% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(-60deg);
+  }
+  35% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(-40deg);
+  }
+  45% {
+    transform: rotate(-60deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+  60% {
+    transform: rotate(-40deg);
+  }
 }
 
 @keyframes wizard-right-finger {
-  0% { transform: translateY(16px); }
-  10% { transform: none; }
-  50% { transform: none; }
-  60% { transform: translateY(16px); }
+  0% {
+    transform: translateY(16px);
+  }
+  10% {
+    transform: none;
+  }
+  50% {
+    transform: none;
+  }
+  60% {
+    transform: translateY(16px);
+  }
 }
 
 @keyframes wizard-left-finger {
-  0% { transform: scaleX(0); }
-  10% { transform: scaleX(1) rotate(6deg); }
-  15% { transform: scaleX(1) rotate(0deg); }
-  20% { transform: scaleX(1) rotate(8deg); }
-  25% { transform: scaleX(1) rotate(0deg); }
-  30% { transform: scaleX(1) rotate(7deg); }
-  35% { transform: scaleX(1) rotate(0deg); }
-  40% { transform: scaleX(1) rotate(5deg); }
-  45% { transform: scaleX(1) rotate(0deg); }
-  50% { transform: scaleX(1) rotate(6deg); }
-  58% { transform: scaleX(0); }
+  0% {
+    transform: scaleX(0);
+  }
+  10% {
+    transform: scaleX(1) rotate(6deg);
+  }
+  15% {
+    transform: scaleX(1) rotate(0deg);
+  }
+  20% {
+    transform: scaleX(1) rotate(8deg);
+  }
+  25% {
+    transform: scaleX(1) rotate(0deg);
+  }
+  30% {
+    transform: scaleX(1) rotate(7deg);
+  }
+  35% {
+    transform: scaleX(1) rotate(0deg);
+  }
+  40% {
+    transform: scaleX(1) rotate(5deg);
+  }
+  45% {
+    transform: scaleX(1) rotate(0deg);
+  }
+  50% {
+    transform: scaleX(1) rotate(6deg);
+  }
+  58% {
+    transform: scaleX(0);
+  }
 }
 
 @keyframes wizard-head {
-  0% { transform: rotate(-3deg); }
-  10% { transform: translateX(10px) rotate(7deg); }
-  50% { transform: translateX(0) rotate(0deg); }
-  56% { transform: rotate(-3deg); }
+  0% {
+    transform: rotate(-3deg);
+  }
+  10% {
+    transform: translateX(10px) rotate(7deg);
+  }
+  50% {
+    transform: translateX(0) rotate(0deg);
+  }
+  56% {
+    transform: rotate(-3deg);
+  }
 }
 
 @keyframes wizard-path-circle {
-  0% { transform: translateY(0); }
-  10% { transform: translateY(-100px) rotate(-5deg); }
-  55% { transform: translateY(-100px) rotate(-360deg); }
-  58% { transform: translateY(-100px) rotate(-360deg); }
-  63% { transform: rotate(-360deg); }
+  0% {
+    transform: translateY(0);
+  }
+  10% {
+    transform: translateY(-100px) rotate(-5deg);
+  }
+  55% {
+    transform: translateY(-100px) rotate(-360deg);
+  }
+  58% {
+    transform: translateY(-100px) rotate(-360deg);
+  }
+  63% {
+    transform: rotate(-360deg);
+  }
 }
 
 @keyframes wizard-path-square {
-  0% { transform: translateY(0); }
-  10% { transform: translateY(-155px) translateX(-15px) rotate(10deg); }
-  55% { transform: translateY(-155px) translateX(-15px) rotate(-350deg); }
-  57% { transform: translateY(-155px) translateX(-15px) rotate(-350deg); }
-  63% { transform: rotate(-360deg); }
+  0% {
+    transform: translateY(0);
+  }
+  10% {
+    transform: translateY(-155px) translateX(-15px) rotate(10deg);
+  }
+  55% {
+    transform: translateY(-155px) translateX(-15px) rotate(-350deg);
+  }
+  57% {
+    transform: translateY(-155px) translateX(-15px) rotate(-350deg);
+  }
+  63% {
+    transform: rotate(-360deg);
+  }
 }
 
 @keyframes wizard-path-triangle {
-  0% { transform: translateY(0); }
-  10% { transform: translateY(-172px) translateX(10px) rotate(-10deg); }
-  55% { transform: translateY(-172px) translateX(10px) rotate(-365deg); }
-  58% { transform: translateY(-172px) translateX(10px) rotate(-365deg); }
-  63% { transform: rotate(-360deg); }
+  0% {
+    transform: translateY(0);
+  }
+  10% {
+    transform: translateY(-172px) translateX(10px) rotate(-10deg);
+  }
+  55% {
+    transform: translateY(-172px) translateX(10px) rotate(-365deg);
+  }
+  58% {
+    transform: translateY(-172px) translateX(10px) rotate(-365deg);
+  }
+  63% {
+    transform: rotate(-360deg);
+  }
 }

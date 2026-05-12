@@ -26,11 +26,14 @@ export interface PageElement {
   textDecoration?: "none" | "underline";
   textBackgroundColor?: string;
   frameImage?: string;
+  /** Per-element stacking order (CSS z-index). Default 10. */
+  zIndex?: number;
 }
 
 export interface PageData {
   id: string;
   background: string;
+  backgroundImage?: string;
   pattern: string;
   elements: PageElement[];
 }
@@ -39,6 +42,7 @@ interface PayloadV1 {
   v: 1;
   pages: PageData[];
   musicUrl?: string;
+  appBackgroundImage?: string;
 }
 
 /** Validate `{ v: 1, pages }` from API, file import, or hash JSON. */
@@ -92,6 +96,9 @@ function parseElement(raw: unknown): PageElement | null {
     out.textBackgroundColor = e.textBackgroundColor;
   }
   if (typeof e.frameImage === "string") out.frameImage = e.frameImage;
+  if (typeof e.zIndex === "number" && Number.isFinite(e.zIndex)) {
+    out.zIndex = Math.round(e.zIndex);
+  }
   return out;
 }
 
@@ -107,7 +114,16 @@ function parsePage(raw: unknown): PageData | null {
     const parsed = parseElement(el);
     if (parsed) elements.push(parsed);
   }
-  return { id: p.id, background: p.background, pattern: p.pattern, elements };
+  const out: PageData = {
+    id: p.id,
+    background: p.background,
+    pattern: p.pattern,
+    elements,
+  };
+  if (typeof p.backgroundImage === "string") {
+    out.backgroundImage = p.backgroundImage.trim();
+  }
+  return out;
 }
 
 export function parsePagesFromHash(hash: string): PageData[] | null {
@@ -145,9 +161,9 @@ export function tryBuildShareUrl(pages: PageData[]): ShareUrlResult {
         "This scrapbook is too large for a single link (often too many or too big photos). Try fewer images, smaller files, or host images online and paste URLs instead.",
     };
   }
-  const path = typeof window !== "undefined" ? window.location.pathname || "/" : "/";
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "";
+  const path =
+    typeof window !== "undefined" ? window.location.pathname || "/" : "/";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   return { ok: true, url: `${origin}${path}#${hash}` };
 }
 
@@ -226,6 +242,7 @@ export type SharedScrapbookBundle = {
   editUntil: string | null;
   mediaBytes: number;
   musicUrl: string;
+  appBackgroundImage: string;
 };
 
 export function parseSharedScrapbookResponse(
@@ -236,6 +253,7 @@ export function parseSharedScrapbookResponse(
   let editUntil: string | null = null;
   let mediaBytes = 0;
   let musicUrl = "";
+  let appBackgroundImage = "";
   if (raw && typeof raw === "object") {
     const eu = (raw as Record<string, unknown>).editUntil;
     if (typeof eu === "string" && eu.length > 0) {
@@ -250,14 +268,19 @@ export function parseSharedScrapbookResponse(
     if (typeof mu === "string") {
       musicUrl = mu.trim();
     }
+    const abi = (raw as Record<string, unknown>).appBackgroundImage;
+    if (typeof abi === "string") {
+      appBackgroundImage = abi.trim();
+    }
   }
-  return { pages, editUntil, mediaBytes, musicUrl };
+  return { pages, editUntil, mediaBytes, musicUrl, appBackgroundImage };
 }
 
 /** POST scrapbook to server; returns short id for `?share=id` links. */
 export async function uploadPagesForShare(
   pages: PageData[],
   musicUrl?: string,
+  appBackgroundImage?: string,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const base = shareApiBase();
   const url = `${base}/api/share`;
@@ -266,6 +289,9 @@ export async function uploadPagesForShare(
     v: 1,
     pages,
     ...(musicUrl && musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}),
+    ...(appBackgroundImage && appBackgroundImage.trim()
+      ? { appBackgroundImage: appBackgroundImage.trim() }
+      : {}),
   };
   if (editDays !== undefined) requestPayload.editDays = editDays;
   const headers: Record<string, string> = {
@@ -300,6 +326,7 @@ export async function ensureSharedPagesById(
   id: string,
   pages: PageData[],
   musicUrl?: string,
+  appBackgroundImage?: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = shareApiBase();
   const url = `${base}/api/share/${encodeURIComponent(id)}/ensure`;
@@ -320,6 +347,9 @@ export async function ensureSharedPagesById(
         v: 1,
         pages,
         ...(musicUrl && musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}),
+        ...(appBackgroundImage && appBackgroundImage.trim()
+          ? { appBackgroundImage: appBackgroundImage.trim() }
+          : {}),
       } as PayloadV1),
     });
     if (!r.ok) {
@@ -352,6 +382,7 @@ export async function saveSharedPagesById(
   id: string,
   pages: PageData[],
   musicUrl?: string,
+  appBackgroundImage?: string,
   options?: { signal?: AbortSignal },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = shareApiBase();
@@ -365,6 +396,9 @@ export async function saveSharedPagesById(
         v: 1,
         pages,
         ...(musicUrl !== undefined ? { musicUrl: musicUrl.trim() } : {}),
+        ...(appBackgroundImage !== undefined
+          ? { appBackgroundImage: appBackgroundImage.trim() }
+          : {}),
       } as PayloadV1),
     });
     if (!r.ok) {
@@ -458,9 +492,9 @@ export async function fetchSharedPagesById(
 }
 
 export function buildShareUrlWithQueryId(id: string): string {
-  const path = typeof window !== "undefined" ? window.location.pathname || "/" : "/";
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "";
+  const path =
+    typeof window !== "undefined" ? window.location.pathname || "/" : "/";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   const u = new URL(origin + path);
   u.searchParams.set("share", id);
   return u.toString();
@@ -470,6 +504,7 @@ export function buildShareUrlWithQueryId(id: string): string {
 export async function resolveShareableUrl(
   pages: PageData[],
   musicUrl?: string,
+  appBackgroundImage?: string,
 ): Promise<
   | { kind: "hash"; url: string }
   | { kind: "server"; url: string }
@@ -481,7 +516,7 @@ export async function resolveShareableUrl(
       reason: "Publishing is disabled in this app build.",
     };
   }
-  const up = await uploadPagesForShare(pages, musicUrl);
+  const up = await uploadPagesForShare(pages, musicUrl, appBackgroundImage);
   if (up.ok) return { kind: "server", url: buildShareUrlWithQueryId(up.id) };
   if (up.ok === false) {
     return {
