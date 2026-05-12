@@ -72,6 +72,12 @@ const PATTERNS: { name: string; value: string }[] = [
   { name: "Тууш", value: "pattern-lines" },
   { name: "Хоосон", value: "" },
 ];
+const DEMO_PATTERNS: { name: string; value: string }[] = [
+  { name: "Polka dots", value: "pattern-polka" },
+  { name: "Grid", value: "pattern-grid" },
+  { name: "Lines", value: "pattern-lines" },
+  { name: "None", value: "" },
+];
 const FONTS = [
   { name: "Гар бичмэл", value: "var(--font-handwriting)" },
   { name: "Санс сериф", value: "var(--font-sans)" },
@@ -103,11 +109,26 @@ const FONTS = [
   { name: "Robert", value: "var(--font-robert)" },
   { name: "Inter-BlkCn", value: "var(--font-inter)" },
 ];
+const DEMO_FONTS = FONTS.map((font) =>
+  font.value === "var(--font-handwriting)"
+    ? { ...font, name: "Handwriting" }
+    : font.value === "var(--font-sans)"
+      ? { ...font, name: "Sans serif" }
+      : font.value === "var(--font-drevensina)"
+        ? { ...font, name: "Drevensina" }
+        : font,
+);
 const TEXT_EFFECTS = [
   { name: "Байхгүй", value: "none" },
   { name: "Сүүдэр", value: "shadow" },
   { name: "Хүрээ", value: "outline" },
   { name: "Гэрэлтэлт", value: "glow" },
+];
+const DEMO_TEXT_EFFECTS = [
+  { name: "None", value: "none" },
+  { name: "Shadow", value: "shadow" },
+  { name: "Outline", value: "outline" },
+  { name: "Glow", value: "glow" },
 ];
 
 const GIPHY_PUBLIC_BETA_KEY = "dc6zaTOxFJmzC";
@@ -207,6 +228,7 @@ const GRAPHIC_PRESETS: GraphicPick[] = [
 
 export function EditorPanelBody({
   selectedPageId,
+  isDemoMode = false,
   selectedElementId,
   pages,
   openAccordion,
@@ -233,6 +255,7 @@ export function EditorPanelBody({
   addPagesPair,
 }: {
   selectedPageId: string | null;
+  isDemoMode?: boolean;
   selectedElementId: string | null;
   pages: PageData[];
   openAccordion: EditorAccordionId | null;
@@ -357,10 +380,18 @@ export function EditorPanelBody({
       }
       setGifResults(picks);
       if (picks.length === 0) {
-        setGifError("GIF олдсонгүй. Өөр түлхүүр үг туршаарай.");
+        setGifError(
+          isDemoMode
+            ? "No GIFs found. Try another search word."
+            : "GIF олдсонгүй. Өөр түлхүүр үг туршаарай.",
+        );
       }
     } catch {
-      setGifError("Одоогоор GIF хайж чадсангүй.");
+      setGifError(
+        isDemoMode
+          ? "Could not search GIFs right now."
+          : "Одоогоор GIF хайж чадсангүй.",
+      );
     } finally {
       setGifLoading(false);
     }
@@ -377,7 +408,11 @@ export function EditorPanelBody({
     if (!url) return;
     const looksLikeUrl = /^https?:\/\/\S+/i.test(url);
     if (!looksLikeUrl) {
-      setGifError("Зөв GIF URL оруулна уу (https://...)");
+      setGifError(
+        isDemoMode
+          ? "Enter a valid GIF URL (https://...)."
+          : "Зөв GIF URL оруулна уу (https://...)",
+      );
       return;
     }
     addElement(selectedPageId, "image", url);
@@ -459,10 +494,18 @@ export function EditorPanelBody({
       }
       setGraphicResults(picks);
       if (picks.length === 0) {
-        setGraphicError("Илэрц олдсонгүй. Өөр үгээр хайгаад үзээрэй.");
+        setGraphicError(
+          isDemoMode
+            ? "No graphics found. Try another search word."
+            : "Илэрц олдсонгүй. Өөр үгээр хайгаад үзээрэй.",
+        );
       }
     } catch {
-      setGraphicError("Graphic хайлт амжилтгүй боллоо. Дахин оролдоно уу.");
+      setGraphicError(
+        isDemoMode
+          ? "Graphic search failed. Please try again."
+          : "Graphic хайлт амжилтгүй боллоо. Дахин оролдоно уу.",
+      );
       setGraphicResults([]);
     } finally {
       setGraphicLoading(false);
@@ -486,11 +529,16 @@ export function EditorPanelBody({
     : "";
   const graphicItems =
     graphicResults.length > 0 ? graphicResults : GRAPHIC_PRESETS;
+  const patterns = isDemoMode ? DEMO_PATTERNS : PATTERNS;
+  const fonts = isDemoMode ? DEMO_FONTS : FONTS;
+  const textEffects = isDemoMode ? DEMO_TEXT_EFFECTS : TEXT_EFFECTS;
 
   if (!selectedPageId) {
     return (
       <p className="py-8 text-center text-sm text-stone-500">
-        Засах хуудсаа нээгээд сонгоно уу.
+        {isDemoMode
+          ? "Open and select a page to edit."
+          : "Засах хуудсаа нээгээд сонгоно уу."}
       </p>
     );
   }
@@ -519,7 +567,9 @@ export function EditorPanelBody({
       .EyeDropper;
     if (!ctor) {
       window.alert(
-        "Таны төхөөрөмж дээр дэлгэцээс өнгө сонгох (eyedropper) дэмжигдэхгүй байна.",
+        isDemoMode
+          ? "Your device does not support picking a color from the screen."
+          : "Таны төхөөрөмж дээр дэлгэцээс өнгө сонгох (eyedropper) дэмжигдэхгүй байна.",
       );
       return null;
     }
@@ -538,22 +588,29 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Type}
-        label="Текст"
+        label={isDemoMode ? "Text" : "Текст"}
       />
       {openAccordion === "text" && (
         <div className="mb-2 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <button
             type="button"
             onClick={() => {
-              addElement(selectedPageId, "text", "Текстээ энд бичнэ үү", {
+              addElement(
+                selectedPageId,
+                "text",
+                isDemoMode ? "Write your text here" : "Текстээ энд бичнэ үү",
+                {
                 width: 260,
                 height: 120,
-              });
+                },
+              );
             }}
             className="flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50"
           >
             <Type size={22} />
-            <span className="text-sm font-medium">Текст нэмэх</span>
+            <span className="text-sm font-medium">
+              {isDemoMode ? "Add text" : "Текст нэмэх"}
+            </span>
           </button>
         </div>
       )}
@@ -563,14 +620,16 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={ImageIcon}
-        label="Зураг"
+        label={isDemoMode ? "Photo / video" : "Зураг"}
       />
       {openAccordion === "photo" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div className="grid grid-cols-2 gap-2">
             <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50">
               <ImageIcon size={22} />
-              <span className="text-sm font-medium">Зураг оруулах</span>
+              <span className="text-sm font-medium">
+                {isDemoMode ? "Upload photo" : "Зураг оруулах"}
+              </span>
               <input
                 type="file"
                 accept="image/*"
@@ -580,7 +639,9 @@ export function EditorPanelBody({
             </label>
             <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-stone-200 bg-white py-4 hover:bg-rose-50">
               <ImageIcon size={22} />
-              <span className="text-sm font-medium">Видео оруулах</span>
+              <span className="text-sm font-medium">
+                {isDemoMode ? "Upload video" : "Видео оруулах"}
+              </span>
               <input
                 type="file"
                 accept="video/*"
@@ -591,7 +652,7 @@ export function EditorPanelBody({
           </div>
           <div className="rounded-lg border border-stone-200 bg-white p-2">
             <p className="mb-2 text-xs font-medium text-stone-600">
-              GIF линк оруулах
+              {isDemoMode ? "Add GIF link" : "GIF линк оруулах"}
             </p>
             <div className="mb-3 flex gap-2">
               <input
@@ -608,11 +669,11 @@ export function EditorPanelBody({
                 disabled={!gifDirectUrl.trim()}
                 className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Нэмэх
+                {isDemoMode ? "Add" : "Нэмэх"}
               </button>
             </div>
             <p className="mb-2 text-xs font-medium text-stone-600">
-              GIF хайх (GIPHY / Tenor)
+              {isDemoMode ? "Search GIFs (GIPHY / Tenor)" : "GIF хайх (GIPHY / Tenor)"}
             </p>
             <div className="mb-2 flex gap-2">
               <input
@@ -620,7 +681,7 @@ export function EditorPanelBody({
                 value={gifQuery}
                 onChange={(e) => setGifQuery(e.target.value)}
                 onKeyDown={onGifQueryKeyDown}
-                placeholder="хайр, төрсөн өдөр, цэцэг..."
+                placeholder={isDemoMode ? "travel, friends, sparkle..." : "хайр, төрсөн өдөр, цэцэг..."}
                 className="min-w-0 flex-1 rounded-md border border-stone-200 px-2 py-1.5 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-400"
               />
               <button
@@ -629,7 +690,7 @@ export function EditorPanelBody({
                 disabled={gifLoading || !gifQuery.trim()}
                 className="rounded-md bg-stone-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-900 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {gifLoading ? "..." : "Хайх"}
+                {gifLoading ? "..." : isDemoMode ? "Search" : "Хайх"}
               </button>
             </div>
             {gifError && (
@@ -645,7 +706,7 @@ export function EditorPanelBody({
                       addElement(selectedPageId, "image", gif.fullUrl)
                     }
                     className="group overflow-hidden rounded-md border border-stone-200 bg-stone-100 hover:border-rose-300"
-                    title="Энэ GIF-ийг нэмэх"
+                    title={isDemoMode ? "Add this GIF" : "Энэ GIF-ийг нэмэх"}
                   >
                     <img
                       src={gif.previewUrl}
@@ -666,13 +727,13 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Sticker}
-        label="Стикер"
+        label={isDemoMode ? "Stickers / graphics" : "Стикер"}
       />
       {openAccordion === "stickers" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div className="rounded-lg border border-stone-200 bg-white p-2">
             <p className="mb-2 text-xs font-medium text-stone-600">
-              Хөөрхөн Graphic
+              {isDemoMode ? "Cute graphics" : "Хөөрхөн Graphic"}
             </p>
             <div className="mb-2 flex gap-2">
               <input
@@ -689,7 +750,7 @@ export function EditorPanelBody({
                 disabled={graphicLoading || !graphicQuery.trim()}
                 className="rounded-md bg-stone-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-900 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {graphicLoading ? "..." : "Хайх"}
+                {graphicLoading ? "..." : isDemoMode ? "Search" : "Хайх"}
               </button>
             </div>
             {graphicError && (
@@ -704,7 +765,7 @@ export function EditorPanelBody({
                     addElement(selectedPageId, "image", item.fullUrl)
                   }
                   className="group overflow-hidden rounded-md border border-stone-200 bg-white hover:border-rose-300"
-                  title="Энэ graphic-ийг нэмэх"
+                  title={isDemoMode ? "Add this graphic" : "Энэ graphic-ийг нэмэх"}
                 >
                   <img
                     src={item.previewUrl}
@@ -717,7 +778,9 @@ export function EditorPanelBody({
             </div>
             {graphicItems.length === 0 && !graphicError && (
               <p className="mt-2 text-[11px] text-stone-500">
-                Хайлт хийгээд graphic-уудаа гаргаж ирнэ.
+                {isDemoMode
+                  ? "Search to load more graphics."
+                  : "Хайлт хийгээд graphic-уудаа гаргаж ирнэ."}
               </p>
             )}
           </div>
@@ -729,7 +792,7 @@ export function EditorPanelBody({
             className="w-full rounded-lg border border-stone-200 bg-white p-2 text-left hover:bg-rose-50"
           >
             <p className="mb-2 text-xs font-medium text-stone-600">
-              Полароид стикер нэмэх
+              {isDemoMode ? "Add photo frame" : "Полароид стикер нэмэх"}
             </p>
             <div className="mx-auto h-20 w-16 rounded-sm border border-[#e6dfd5] bg-[#fbf8f1] p-1 shadow-md">
               <div className="h-full w-full rounded-[2px] border border-black/10 bg-linear-to-br from-stone-200 to-stone-300" />
@@ -755,12 +818,14 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Palette}
-        label="Хуудасны загвар"
+        label={isDemoMode ? "Page style" : "Хуудасны загвар"}
       />
       {openAccordion === "pageStyle" && (
         <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div>
-            <p className="mb-2 text-xs text-stone-500">Дэвсгэр өнгө</p>
+            <p className="mb-2 text-xs text-stone-500">
+              {isDemoMode ? "Page background color" : "Дэвсгэр өнгө"}
+            </p>
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -777,7 +842,7 @@ export function EditorPanelBody({
                   if (c) updatePageBackground(selectedPageId, c);
                 }}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
-                title="Зурагнаас өнгө авах"
+                title={isDemoMode ? "Pick color from screen" : "Зурагнаас өнгө авах"}
               >
                 <Pipette size={16} />
               </button>
@@ -810,7 +875,9 @@ export function EditorPanelBody({
             </div>
           </div>
           <div>
-            <p className="mb-2 text-xs text-stone-500">Үндсэн дэвсгэр өнгө</p>
+            <p className="mb-2 text-xs text-stone-500">
+              {isDemoMode ? "Website background color" : "Үндсэн дэвсгэр өнгө"}
+            </p>
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -825,7 +892,7 @@ export function EditorPanelBody({
                   if (c) setAppBackgroundColor(c);
                 }}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
-                title="Зурагнаас өнгө авах"
+                title={isDemoMode ? "Pick color from screen" : "Зурагнаас өнгө авах"}
               >
                 <Pipette size={16} />
               </button>
@@ -856,9 +923,11 @@ export function EditorPanelBody({
             </div>
           </div>
           <div>
-            <p className="mb-2 text-xs text-stone-500">Хээ</p>
+            <p className="mb-2 text-xs text-stone-500">
+              {isDemoMode ? "Pattern" : "Хээ"}
+            </p>
             <div className="grid grid-cols-2 gap-2">
-              {PATTERNS.map(({ name, value }) => (
+              {patterns.map(({ name, value }) => (
                 <button
                   key={value || "none"}
                   type="button"
@@ -878,13 +947,13 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Palette}
-        label="Арын хөгжим"
+        label={isDemoMode ? "Background music" : "Арын хөгжим"}
       />
       {openAccordion === "bookEffects" && (
         <div className="mb-2 space-y-4 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
           <div>
             <p className="mb-2 text-xs text-stone-500">
-              Арын хөгжим (YouTube линк)
+              {isDemoMode ? "Background music (YouTube link)" : "Арын хөгжим (YouTube линк)"}
             </p>
             <input
               type="url"
@@ -894,14 +963,16 @@ export function EditorPanelBody({
               className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
             <p className="mt-1 text-[11px] text-stone-500">
-              Youtube-ээс дууны линкийг хуулж оруулна уу.
+              {isDemoMode
+                ? "Paste a YouTube music link. In demo mode this does not save publicly."
+                : "Youtube-ээс дууны линкийг хуулж оруулна уу."}
             </p>
             <button
               type="button"
               onClick={saveMusicLink}
               className="mt-2 rounded-md bg-stone-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-900"
             >
-              Линк хадгалах
+              {isDemoMode ? "Preview music" : "Линк хадгалах"}
             </button>
           </div>
         </div>
@@ -912,7 +983,7 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={MousePointerClick}
-        label="Сонгосон элемент"
+        label={isDemoMode ? "Selected item" : "Сонгосон элемент"}
         disabled={!selectedElementId}
       />
       {openAccordion === "selection" && selectedElementId && selectedEl && (
@@ -920,7 +991,9 @@ export function EditorPanelBody({
           {selectedEl.type === "text" && (
             <>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Текст</p>
+                <p className="mb-2 text-xs text-stone-500">
+                  {isDemoMode ? "Text" : "Текст"}
+                </p>
                 <textarea
                   value={selectedEl.content}
                   onChange={(e) =>
@@ -934,7 +1007,9 @@ export function EditorPanelBody({
                 />
               </div>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Текстийн өнгө</p>
+                <p className="mb-2 text-xs text-stone-500">
+                  {isDemoMode ? "Text color" : "Текстийн өнгө"}
+                </p>
                 <div className="mb-2 flex items-center gap-2">
                   <input
                     type="color"
@@ -958,7 +1033,7 @@ export function EditorPanelBody({
                       });
                     }}
                     className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
-                    title="Зурагнаас өнгө авах"
+                    title={isDemoMode ? "Pick color from screen" : "Зурагнаас өнгө авах"}
                   >
                     <Pipette size={14} />
                   </button>
@@ -986,7 +1061,9 @@ export function EditorPanelBody({
                 </div>
               </div>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Фонтын төрөл</p>
+                <p className="mb-2 text-xs text-stone-500">
+                  {isDemoMode ? "Font" : "Фонтын төрөл"}
+                </p>
                 <select
                   value={selectedEl.fontFamily || "var(--font-handwriting)"}
                   onChange={(e) =>
@@ -997,7 +1074,7 @@ export function EditorPanelBody({
                   }
                   className="w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
                 >
-                  {FONTS.map((font) => (
+                  {fonts.map((font) => (
                     <option
                       key={font.name}
                       value={font.value}
@@ -1009,7 +1086,9 @@ export function EditorPanelBody({
                 </select>
               </div>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Текстийн хэв маяг</p>
+                <p className="mb-2 text-xs text-stone-500">
+                  {isDemoMode ? "Text style" : "Текстийн хэв маяг"}
+                </p>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
@@ -1057,7 +1136,9 @@ export function EditorPanelBody({
                 </div>
               </div>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Текстийн хэмжээ</p>
+                <p className="mb-2 text-xs text-stone-500">
+                  {isDemoMode ? "Text size" : "Текстийн хэмжээ"}
+                </p>
                 <input
                   type="range"
                   min="12"
@@ -1075,9 +1156,11 @@ export function EditorPanelBody({
                 />
               </div>
               <div>
-                <p className="mb-2 text-xs text-stone-500">Текстийн эффект</p>
+                <p className="mb-2 text-xs text-stone-500">
+                  {isDemoMode ? "Text effect" : "Текстийн эффект"}
+                </p>
                 <div className="grid grid-cols-2 gap-2">
-                  {TEXT_EFFECTS.map((effect) => (
+                  {textEffects.map((effect) => (
                     <button
                       key={effect.name}
                       type="button"
@@ -1098,7 +1181,9 @@ export function EditorPanelBody({
           )}
 
           <div>
-            <p className="mb-2 text-xs text-stone-500">Эргүүлэх</p>
+            <p className="mb-2 text-xs text-stone-500">
+              {isDemoMode ? "Rotate" : "Эргүүлэх"}
+            </p>
             <input
               type="range"
               min="-180"
@@ -1120,7 +1205,9 @@ export function EditorPanelBody({
           </div>
 
           <div>
-            <p className="mb-2 text-xs text-stone-500">Өргөн</p>
+            <p className="mb-2 text-xs text-stone-500">
+              {isDemoMode ? "Width / size" : "Өргөн"}
+            </p>
             <input
               type="range"
               min={
@@ -1176,7 +1263,9 @@ export function EditorPanelBody({
             selectedEl.type === "text" ||
             selectedEl.content === POLAROID_STICKER_TOKEN) && (
             <div>
-              <p className="mb-2 text-xs text-stone-500">Өндөр</p>
+              <p className="mb-2 text-xs text-stone-500">
+                {isDemoMode ? "Height" : "Өндөр"}
+              </p>
               <input
                 type="range"
                 min="50"
@@ -1201,7 +1290,7 @@ export function EditorPanelBody({
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-50 py-2 px-4 text-red-600 hover:bg-red-100"
           >
             <Trash2 size={16} />
-            Элемент устгах
+            {isDemoMode ? "Delete item" : "Элемент устгах"}
           </button>
         </div>
       )}
@@ -1211,7 +1300,7 @@ export function EditorPanelBody({
         openId={openAccordion}
         setOpenId={setOpenAccordion}
         icon={Files}
-        label="Хуудсууд"
+        label={isDemoMode ? "Pages" : "Хуудсууд"}
       />
       {openAccordion === "pages" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
@@ -1222,7 +1311,7 @@ export function EditorPanelBody({
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 py-3 px-4 font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-red-50"
           >
             <Trash2 size={18} />
-            Энэ хуудсыг устгах
+            {isDemoMode ? "Delete this page" : "Энэ хуудсыг устгах"}
           </button>
           <button
             type="button"
@@ -1230,7 +1319,7 @@ export function EditorPanelBody({
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-stone-100 py-3 px-4 font-medium text-stone-700 hover:bg-stone-200"
           >
             <Plus size={18} />
-            Шинэ хуудас нэмэх
+            {isDemoMode ? "Add new pages" : "Шинэ хуудас нэмэх"}
           </button>
         </div>
       )}

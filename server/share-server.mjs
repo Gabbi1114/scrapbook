@@ -39,6 +39,7 @@ const hasR2Config =
   R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET;
 const MAX_SHARE_BYTES = 15 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 60;
+const SANDBOX_DEMO_SHARE_ID = "Es8MGMZo5IweOb8a";
 const execFileAsync = promisify(execFile);
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -506,6 +507,14 @@ app.put("/api/share/:id", async (req, res) => {
     if (!record) {
       return res.status(404).json({ error: "not found" });
     }
+    if (path.basename(req.params.id) === SANDBOX_DEMO_SHARE_ID) {
+      return res.json({
+        ok: true,
+        bytesUsed: currentMediaBytes(record.data),
+        bytesLimit: MAX_SHARE_BYTES,
+        demo: true,
+      });
+    }
 
     const prev = record.data;
     const editUntil =
@@ -573,6 +582,16 @@ app.post("/api/share/:id/finalize", async (req, res) => {
     if (!record) {
       return res.status(404).json({ error: "not found" });
     }
+    if (path.basename(req.params.id) === SANDBOX_DEMO_SHARE_ID) {
+      return res.json({
+        ok: true,
+        editUntil:
+          typeof record.data?.editUntil === "string"
+            ? record.data.editUntil
+            : new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        demo: true,
+      });
+    }
     const prev = record.data || {};
     const currentEditUntil =
       typeof prev.editUntil === "string" ? prev.editUntil : null;
@@ -605,6 +624,11 @@ app.post(
       }
       const record = await loadShareOrNull(req.params.id);
       if (!record) return res.status(404).json({ error: "share not found" });
+      if (path.basename(req.params.id) === SANDBOX_DEMO_SHARE_ID) {
+        return res.status(403).json({
+          error: "Demo share uploads are browser-only and are not saved.",
+        });
+      }
       const editUntil =
         typeof record.data?.editUntil === "string"
           ? record.data.editUntil

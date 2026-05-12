@@ -300,6 +300,8 @@ function toFriendlyFinalizeError(rawError: string): string {
 }
 
 const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
+const DEMO_SHARE_ID = "Es8MGMZo5IweOb8a";
+const DEMO_EDIT_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
 const LOADING_SCENE_EXIT_MS = 700;
 const LOADING_PROGRESS_SETTLE_MS = 220;
 const BOOTSTRAP_NETWORK_TIMEOUT_MS = 7000;
@@ -311,6 +313,23 @@ const SHARE_BOOTSTRAP_FAILSAFE_MS =
   SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
 const MAX_UPLOAD_IMAGE_SIDE_PX = 1600;
 const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 1920;
+
+function isSandboxDemoShareId(id: string | null | undefined): boolean {
+  return id === DEMO_SHARE_ID;
+}
+
+function getDemoEditUntilIso(id: string): string {
+  const fallback = Date.now() + DEMO_EDIT_WINDOW_MS;
+  if (typeof window === "undefined") return new Date(fallback).toISOString();
+  const key = `scrapbook-demo-opened-at:${id}`;
+  const existing = Number(window.localStorage.getItem(key) || 0);
+  const openedAt =
+    Number.isFinite(existing) && existing > 0 ? existing : Date.now();
+  if (!existing) {
+    window.localStorage.setItem(key, String(openedAt));
+  }
+  return new Date(openedAt + DEMO_EDIT_WINDOW_MS).toISOString();
+}
 
 function isIosWebkitDevice(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -1081,7 +1100,11 @@ export default function App() {
     (async () => {
       try {
         if (sid) {
-          setShareHint("Линкийн өгөгдлийг ачаалж байна...");
+          setShareHint(
+            isSandboxDemoShareId(sid)
+              ? "Loading demo scrapbook..."
+              : "Линкийн өгөгдлийг ачаалж байна...",
+          );
           const bundle = await fetchSharedBundleWithAttempts(
             sid,
             SHARE_FETCH_ATTEMPTS,
@@ -1094,7 +1117,11 @@ export default function App() {
             setPages(bundle.pages);
             setBackgroundMusicUrl(bundle.musicUrl || "");
             setAppBackgroundImageUrl(bundle.appBackgroundImage || "");
-            setShareEditUntilIso(bundle.editUntil);
+            setShareEditUntilIso(
+              isSandboxDemoShareId(sid)
+                ? getDemoEditUntilIso(sid)
+                : bundle.editUntil,
+            );
             setShareStorageUsedBytes(bundle.mediaBytes);
             setSharedViewMode(true);
             setHistory([bundle.pages]);
@@ -1155,16 +1182,20 @@ export default function App() {
   const shareEditDeadlineMs = shareEditUntilIso
     ? Date.parse(shareEditUntilIso)
     : NaN;
+  const isDemoShare = sharedViewMode && isSandboxDemoShareId(currentShareId);
   const isShareEditExpired =
     shareEditUntilIso !== null &&
     Number.isFinite(shareEditDeadlineMs) &&
     Date.now() > shareEditDeadlineMs;
   const canEditSharedLink = sharedViewMode && !isShareEditExpired;
   const canSaveToServer =
-    Boolean(currentShareId) && (!sharedViewMode || canEditSharedLink);
+    Boolean(currentShareId) &&
+    !isDemoShare &&
+    (!sharedViewMode || canEditSharedLink);
   void shareDeadlineTick;
 
-  const showPublishLinkUi = !sharedViewMode && canPublishShareLinks();
+  const showPublishLinkUi =
+    !isDemoShare && !sharedViewMode && canPublishShareLinks();
   const isPureViewOnly = sharedViewMode && !canEditSharedLink;
   const shouldLockStudio =
     !sharedViewMode && studioPassword.length > 0 && !studioUnlocked;
@@ -1193,6 +1224,13 @@ export default function App() {
 
   const finalizeEditingNow = async () => {
     if (!currentShareId) return;
+    if (isDemoShare) {
+      setIsEditing(false);
+      setShowFinalizePrompt(false);
+      setShareHint("Demo mode: your changes are not saved to this public link.");
+      window.setTimeout(() => setShareHint(null), 2400);
+      return;
+    }
     setIsFinalizing(true);
     const r = await finalizeSharedEditingById(currentShareId);
     setIsFinalizing(false);
@@ -1210,6 +1248,11 @@ export default function App() {
   const saveMusicLinkNow = async () => {
     if (!currentShareId) return;
     if (sharedViewMode && !canEditSharedLink) return;
+    if (isDemoShare) {
+      setShareHint("Demo mode: music changes stay only in this browser session.");
+      window.setTimeout(() => setShareHint(null), 1800);
+      return;
+    }
     autosaveAbortRef.current?.abort();
     const controller = new AbortController();
     autosaveAbortRef.current = controller;
@@ -1462,12 +1505,18 @@ export default function App() {
 
   const removePage = (pageId: string) => {
     if (pages.length <= 2) {
-      window.alert("Номонд хамгийн багадаа 2 хуудас үлдэх ёстой.");
+      window.alert(
+        isDemoShare
+          ? "The book needs at least 2 pages."
+          : "Номонд хамгийн багадаа 2 хуудас үлдэх ёстой.",
+      );
       return;
     }
     if (
       !window.confirm(
-        "Энэ хуудсыг устгах уу? Дараа нь Буцаах товчоор сэргээж болно.",
+        isDemoShare
+          ? "Delete this page? You can restore it with Undo."
+          : "Энэ хуудсыг устгах уу? Дараа нь Буцаах товчоор сэргээж болно.",
       )
     ) {
       return;
@@ -1517,7 +1566,11 @@ export default function App() {
       );
       return null;
     }
-    setShareHint("Background image is uploading...");
+    setShareHint(
+      isDemoShare
+        ? "Demo mode: previewing background locally..."
+        : "Background image is uploading...",
+    );
     let preparedFile = file;
     try {
       preparedFile = await optimizeImageForUpload(file, {
@@ -1527,6 +1580,11 @@ export default function App() {
       });
     } catch {
       preparedFile = file;
+    }
+    if (isDemoShare) {
+      setShareHint("Demo background preview added. It will not save publicly.");
+      window.setTimeout(() => setShareHint(null), 1800);
+      return URL.createObjectURL(preparedFile);
     }
     const uploaded = await uploadImageFileForShare(
       currentShareId,
@@ -1645,7 +1703,11 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (currentShareId) {
-      setShareHint("Зургийг оновчлоод байршуулж байна...");
+      setShareHint(
+        isDemoShare
+          ? "Demo mode: adding image locally..."
+          : "Зургийг оновчлоод байршуулж байна...",
+      );
       void (async () => {
         let preparedFile = file;
         try {
@@ -1658,6 +1720,21 @@ export default function App() {
           mediaSize = await probeImageSize(preparedFile);
         } catch {
           mediaSize = null;
+        }
+        if (isDemoShare) {
+          const targetWidth = 220;
+          const ratio =
+            mediaSize && mediaSize.height > 0
+              ? mediaSize.width / mediaSize.height
+              : 1;
+          const targetHeight = Math.max(60, Math.round(targetWidth / ratio));
+          addElement(pageId, "image", URL.createObjectURL(preparedFile), {
+            width: targetWidth,
+            height: targetHeight,
+          });
+          setShareHint("Demo image added. It will not save publicly.");
+          window.setTimeout(() => setShareHint(null), 1800);
+          return;
         }
         const uploaded = await uploadImageFileForShare(
           currentShareId,
@@ -1734,7 +1811,27 @@ export default function App() {
       return;
     }
 
-    setShareHint("Видео байршуулж байна...");
+    setShareHint(
+      isDemoShare
+        ? "Demo mode: adding video locally..."
+        : "Видео байршуулж байна...",
+    );
+    if (isDemoShare) {
+      const targetWidth = 320;
+      const ratio =
+        mediaSize && mediaSize.height > 0
+          ? mediaSize.width / mediaSize.height
+          : 16 / 9;
+      const targetHeight = Math.max(80, Math.round(targetWidth / ratio));
+      addElement(pageId, "video", URL.createObjectURL(file), {
+        width: targetWidth,
+        height: targetHeight,
+      });
+      setShareHint("Demo video added. It will not save publicly.");
+      window.setTimeout(() => setShareHint(null), 1800);
+      e.target.value = "";
+      return;
+    }
     const uploaded = await uploadImageFileForShare(currentShareId, file);
     if (uploaded.ok === false) {
       setShareHint(null);
@@ -1900,19 +1997,37 @@ export default function App() {
                 </p>
               ) : (
                 <p className="mb-2 text-white/95">
-                  Засвар хийх боломжит хугацаа
-                  {shareEditUntilIso && Number.isFinite(shareEditDeadlineMs) ? (
+                  {isDemoShare ? (
                     <>
-                      {" "}
-                      <span className="font-semibold whitespace-nowrap">
-                        {new Date(shareEditDeadlineMs).toLocaleString()}
-                      </span>{" "}
-                      хүртэл.
+                      Demo sandbox: each visitor can try editing until{" "}
+                      {shareEditUntilIso &&
+                      Number.isFinite(shareEditDeadlineMs) ? (
+                        <span className="font-semibold whitespace-nowrap">
+                          {new Date(shareEditDeadlineMs).toLocaleString()}
+                        </span>
+                      ) : (
+                        "five days after first opening"
+                      )}
+                      . Changes are private and never save to this public link.
                     </>
                   ) : (
-                    "."
-                  )}{" "}
-                  Өөрчлөлтүүд энэ линк дээр автоматаар хадгалагдана.
+                    <>
+                      Засвар хийх боломжит хугацаа
+                      {shareEditUntilIso &&
+                      Number.isFinite(shareEditDeadlineMs) ? (
+                        <>
+                          {" "}
+                          <span className="font-semibold whitespace-nowrap">
+                            {new Date(shareEditDeadlineMs).toLocaleString()}
+                          </span>{" "}
+                          хүртэл.
+                        </>
+                      ) : (
+                        "."
+                      )}{" "}
+                      Өөрчлөлтүүд энэ линк дээр автоматаар хадгалагдана.
+                    </>
+                  )}
                 </p>
               )}
               <div className="flex flex-wrap justify-center gap-2">
@@ -1926,7 +2041,7 @@ export default function App() {
                     Линк хуулах
                   </button>
                 )}
-                {canEditSharedLink && (
+                {canEditSharedLink && !isDemoShare && (
                   <button
                     type="button"
                     onClick={() => setShowFinalizePrompt(true)}
@@ -1951,7 +2066,7 @@ export default function App() {
                     ? "bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
                 }`}
-                aria-label="Өмнөх хуудас"
+                aria-label={isDemoShare ? "Previous page" : "Өмнөх хуудас"}
               >
                 <ChevronLeft size={26} />
               </button>
@@ -2045,7 +2160,7 @@ export default function App() {
                     ? "bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
                 }`}
-                aria-label="Дараагийн хуудас"
+                aria-label={isDemoShare ? "Next page" : "Дараагийн хуудас"}
               >
                 <ChevronRight size={26} />
               </button>
@@ -2057,7 +2172,9 @@ export default function App() {
             <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-50 max-w-[95vw]">
               {sharedViewMode && (
                 <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
-                  Үлдсэн зай: {storageLeftMb.toFixed(2)} MB
+                  {isDemoShare
+                    ? "Demo mode: edits are private and not saved"
+                    : `Үлдсэн зай: ${storageLeftMb.toFixed(2)} MB`}
                 </p>
               )}
               {shareHint && (
@@ -2078,7 +2195,7 @@ export default function App() {
                       type="button"
                       onClick={() => setIsEditing(!isEditing)}
                       className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                      title={isEditing ? "Урьдчилж харах" : "Засах"}
+                      title={isDemoShare ? (isEditing ? "Preview" : "Edit") : isEditing ? "Урьдчилж харах" : "Засах"}
                     >
                       {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
                     </button>
@@ -2091,7 +2208,7 @@ export default function App() {
                           onClick={undo}
                           disabled={historyIndex === 0}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Буцаах"
+                          title={isDemoShare ? "Undo" : "Буцаах"}
                         >
                           <Undo2 size={18} />
                         </button>
@@ -2100,7 +2217,7 @@ export default function App() {
                           onClick={redo}
                           disabled={historyIndex === history.length - 1}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Дахин хийх"
+                          title={isDemoShare ? "Redo" : "Дахин хийх"}
                         >
                           <Redo2 size={18} />
                         </button>
@@ -2156,7 +2273,7 @@ export default function App() {
                       type="button"
                       onClick={() => setIsEditing(!isEditing)}
                       className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                      title={isEditing ? "Урьдчилж харах" : "Засах"}
+                      title={isDemoShare ? (isEditing ? "Preview" : "Edit") : isEditing ? "Урьдчилж харах" : "Засах"}
                     >
                       {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
                     </button>
@@ -2168,7 +2285,7 @@ export default function App() {
                           onClick={undo}
                           disabled={historyIndex === 0}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Буцаах"
+                          title={isDemoShare ? "Undo" : "Буцаах"}
                         >
                           <Undo2 size={18} />
                         </button>
@@ -2177,7 +2294,7 @@ export default function App() {
                           onClick={redo}
                           disabled={historyIndex === history.length - 1}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Дахин хийх"
+                          title={isDemoShare ? "Redo" : "Дахин хийх"}
                         >
                           <Redo2 size={18} />
                         </button>
@@ -2212,7 +2329,7 @@ export default function App() {
               >
                 <GripVertical className="size-4 text-stone-400 md:size-[18px]" />
                 <span className="text-xs font-semibold text-stone-700 md:text-sm">
-                  Засвар
+                  {isDemoShare ? "Edit demo" : "Засвар"}
                 </span>
               </div>
               <div
@@ -2221,6 +2338,7 @@ export default function App() {
               >
                 <EditorPanelBody
                   selectedPageId={selectedPageId}
+                  isDemoMode={isDemoShare}
                   selectedElementId={selectedElementId}
                   pages={pages}
                   openAccordion={openAccordion}
