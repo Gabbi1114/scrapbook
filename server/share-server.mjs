@@ -675,7 +675,9 @@ app.post(
         0,
       );
       const mediaBytes =
-        trackedMediaBytes > 0 ? trackedMediaBytes : currentMediaBytes(record.data);
+        trackedMediaBytes > 0
+          ? trackedMediaBytes
+          : currentMediaBytes(record.data);
       const jsonBytes = pagesJsonBytes(record.data.pages || []);
       if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
         return res.status(413).json({
@@ -732,6 +734,15 @@ app.get("/api/media/:key(*)", async (req, res) => {
     if (out.ContentLength) {
       res.setHeader("Content-Length", String(out.ContentLength));
     }
+    // FIX-K: Cache media assets aggressively on the client and CDN.
+    // Images/videos are content-addressed (keyed by timestamp+random hex),
+    // so they are immutable once written. A 1-year cache eliminates repeated
+    // fetches on page navigation — the #1 cause of memory spikes on iOS Safari
+    // (each re-fetch decodes a fresh copy into the image cache).
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    // FIX-K: Accept-Ranges lets Safari stream video with byte-range requests
+    // instead of downloading the full file before playback begins.
+    res.setHeader("Accept-Ranges", "bytes");
     if (!out.Body || typeof out.Body.pipe !== "function") {
       return res.status(404).send("not found");
     }

@@ -285,15 +285,28 @@ textarea,
 .paper-flip-leaf {
   transform-style: preserve-3d;
   -webkit-transform-style: preserve-3d;
+  /* FIX-C: will-change promoted only while the leaf is actively animating.
+     The JS adds/removes .is-animating via the liteMode/FlipPage effect.
+     Keeping will-change on ALL leaves simultaneously creates one GPU layer
+     per leaf (up to 8+), exhausting VRAM on iPhone and causing jetsam kills.
+     Default: auto (no layer). Promoted only on the two interactive leaves. */
+  will-change: auto;
+}
+
+/* FIX-C: Promote only the two leaves that are currently flipping */
+.paper-flip-leaf.is-flipping {
   will-change: transform;
 }
 
+/* FIX-G: contain:layout style paint limits compositing surface propagation.
+   Combined with backface-visibility:hidden this prevents WebKit from creating
+   extra GPU layers for each paper overlay inside the 3D context. */
 .paper-face {
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform-style: preserve-3d;
   -webkit-transform-style: preserve-3d;
-  contain: paint;
+  contain: layout style paint;
   box-shadow:
     0 2px 9px rgba(24, 18, 12, 0.16),
     inset 0 0 0 1px rgba(255, 255, 255, 0.35);
@@ -346,26 +359,24 @@ textarea,
 
 .paper-fold-shadow--front {
   right: -2px;
-  background:
-    linear-gradient(
-      to left,
-      rgba(22, 16, 10, 0.34) 0%,
-      rgba(58, 42, 26, 0.18) 18%,
-      rgba(255, 255, 255, 0.12) 42%,
-      transparent 74%
-    );
+  background: linear-gradient(
+    to left,
+    rgba(22, 16, 10, 0.34) 0%,
+    rgba(58, 42, 26, 0.18) 18%,
+    rgba(255, 255, 255, 0.12) 42%,
+    transparent 74%
+  );
 }
 
 .paper-fold-shadow--back {
   left: -2px;
-  background:
-    linear-gradient(
-      to right,
-      rgba(22, 16, 10, 0.34) 0%,
-      rgba(58, 42, 26, 0.18) 18%,
-      rgba(255, 255, 255, 0.12) 42%,
-      transparent 74%
-    );
+  background: linear-gradient(
+    to right,
+    rgba(22, 16, 10, 0.34) 0%,
+    rgba(58, 42, 26, 0.18) 18%,
+    rgba(255, 255, 255, 0.12) 42%,
+    transparent 74%
+  );
 }
 
 .paper-edge-highlight {
@@ -379,14 +390,30 @@ textarea,
   right: -1px;
   background:
     linear-gradient(to left, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0)),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.12), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.1));
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.12),
+      transparent 12%,
+      transparent 88%,
+      rgba(0, 0, 0, 0.1)
+    );
 }
 
 .paper-edge-highlight--back {
   left: -1px;
   background:
-    linear-gradient(to right, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0)),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.12), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.1));
+    linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.72),
+      rgba(255, 255, 255, 0)
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.12),
+      transparent 12%,
+      transparent 88%,
+      rgba(0, 0, 0, 0.1)
+    );
 }
 
 .paper-back-glow {
@@ -395,11 +422,19 @@ textarea,
 }
 
 .paper-back-glow--front {
-  background: radial-gradient(ellipse at right center, rgba(255, 255, 255, 0.45), transparent 56%);
+  background: radial-gradient(
+    ellipse at right center,
+    rgba(255, 255, 255, 0.45),
+    transparent 56%
+  );
 }
 
 .paper-back-glow--back {
-  background: radial-gradient(ellipse at left center, rgba(255, 255, 255, 0.45), transparent 56%);
+  background: radial-gradient(
+    ellipse at left center,
+    rgba(255, 255, 255, 0.45),
+    transparent 56%
+  );
 }
 
 .paper-curl-lip {
@@ -415,30 +450,28 @@ textarea,
   right: 0;
   transform-origin: right center;
   -webkit-transform-origin: right center;
-  background:
-    linear-gradient(
-      to left,
-      rgba(255, 255, 255, 0.78) 0%,
-      rgba(255, 255, 255, 0.34) 14%,
-      rgba(72, 48, 28, 0.2) 36%,
-      rgba(255, 255, 255, 0.08) 58%,
-      transparent 86%
-    );
+  background: linear-gradient(
+    to left,
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(255, 255, 255, 0.34) 14%,
+    rgba(72, 48, 28, 0.2) 36%,
+    rgba(255, 255, 255, 0.08) 58%,
+    transparent 86%
+  );
 }
 
 .paper-curl-lip--back {
   left: 0;
   transform-origin: left center;
   -webkit-transform-origin: left center;
-  background:
-    linear-gradient(
-      to right,
-      rgba(255, 255, 255, 0.78) 0%,
-      rgba(255, 255, 255, 0.34) 14%,
-      rgba(72, 48, 28, 0.2) 36%,
-      rgba(255, 255, 255, 0.08) 58%,
-      transparent 86%
-    );
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(255, 255, 255, 0.34) 14%,
+    rgba(72, 48, 28, 0.2) 36%,
+    rgba(255, 255, 255, 0.08) 58%,
+    transparent 86%
+  );
 }
 
 .paper-turn-light {
@@ -448,14 +481,34 @@ textarea,
 
 .paper-turn-light--front {
   background:
-    linear-gradient(to right, rgba(0, 0, 0, 0.22), transparent 28%, rgba(255, 255, 255, 0.38) 82%, rgba(255, 255, 255, 0.64)),
-    radial-gradient(ellipse at right center, rgba(0, 0, 0, 0.18), transparent 48%);
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.22),
+      transparent 28%,
+      rgba(255, 255, 255, 0.38) 82%,
+      rgba(255, 255, 255, 0.64)
+    ),
+    radial-gradient(
+      ellipse at right center,
+      rgba(0, 0, 0, 0.18),
+      transparent 48%
+    );
 }
 
 .paper-turn-light--back {
   background:
-    linear-gradient(to left, rgba(0, 0, 0, 0.22), transparent 28%, rgba(255, 255, 255, 0.38) 82%, rgba(255, 255, 255, 0.64)),
-    radial-gradient(ellipse at left center, rgba(0, 0, 0, 0.18), transparent 48%);
+    linear-gradient(
+      to left,
+      rgba(0, 0, 0, 0.22),
+      transparent 28%,
+      rgba(255, 255, 255, 0.38) 82%,
+      rgba(255, 255, 255, 0.64)
+    ),
+    radial-gradient(
+      ellipse at left center,
+      rgba(0, 0, 0, 0.18),
+      transparent 48%
+    );
 }
 
 .is-ios .paper-fiber-overlay {
@@ -540,6 +593,45 @@ img.interactive {
   background-size: 100% 24px;
 }
 
+/* FIX-G: Limit stacking contexts on scrapbook elements.
+   Each element with box-shadow + transform creates its own compositing layer.
+   Use contain:layout+style on the page container to limit layer propagation. */
+.paper-face {
+  contain: layout style paint;
+}
+
+/* FIX-I: iOS WebKit — avoid nested 3D transforms on overlay elements.
+   The translateZ(1px) on paper overlays inside a preserve-3d parent
+   creates extra compositing surfaces. On iOS, flatten them. */
+.is-ios .paper-fiber-overlay,
+.is-ios .paper-fold-shadow,
+.is-ios .paper-edge-highlight,
+.is-ios .paper-back-glow,
+.is-ios .paper-curl-lip,
+.is-ios .paper-turn-light {
+  transform: none;
+  -webkit-transform: none;
+}
+
+.is-ios .paper-curl-lip {
+  transform: none;
+  -webkit-transform: none;
+}
+
+/* FIX-J: Staging diagnostics — memory monitor overlay (only when ?diag=1) */
+#diag-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 99999;
+  background: rgba(0, 0, 0, 0.75);
+  color: #0f0;
+  font: 11px/1.4 monospace;
+  padding: 4px 8px;
+  pointer-events: none;
+  white-space: pre;
+}
+
 /* Wizard loading scene */
 .wizard-loader {
   --wizard-primary: #3f64ce;
@@ -556,19 +648,29 @@ img.interactive {
   background: #0f172a;
   opacity: 1;
   transform: translateY(0) scale(1);
-  filter: blur(0);
+  /* FIX-C: wizard-loader uses filter:blur on exit which forces a compositing
+     surface for the entire viewport. Restrict will-change to opacity+transform
+     only; drop 'filter' from will-change to avoid pre-allocating a GPU surface
+     for the blur. The blur still works — it just isn't pre-promoted. */
   transition:
     opacity 700ms ease,
     transform 900ms cubic-bezier(0.22, 1, 0.36, 1),
     filter 700ms ease;
-  will-change: opacity, transform, filter;
+  will-change: opacity, transform;
 }
 
 .wizard-loader.wizard-loader--exit {
   opacity: 0;
   transform: translateY(24px) scale(1.015);
+  /* FIX-C: Apply filter only during exit (not pre-promoted). On iOS, skip
+     the blur entirely to avoid a full-screen GPU compositing surface. */
   filter: blur(6px);
   pointer-events: none;
+}
+
+/* FIX-D: On iOS, skip the exit blur — it creates a full-screen GPU surface */
+.is-ios .wizard-loader.wizard-loader--exit {
+  filter: none;
 }
 
 .wizard-loader .scene {

@@ -344,9 +344,7 @@ function upgradeDemoAssetUrl(
     parsed.searchParams.set("q", "88");
     return parsed.toString();
   } catch {
-    return url
-      .replace(/w=\d+/g, `w=${maxWidth}`)
-      .replace(/q=\d+/g, "q=88");
+    return url.replace(/w=\d+/g, `w=${maxWidth}`).replace(/q=\d+/g, "q=88");
   }
 }
 
@@ -359,7 +357,8 @@ function upgradeDemoPagesForHd(
     backgroundImage: upgradeDemoAssetUrl(page.backgroundImage, maxWidth),
     elements: page.elements.map((element) => ({
       ...element,
-      content: upgradeDemoAssetUrl(element.content, maxWidth) || element.content,
+      content:
+        upgradeDemoAssetUrl(element.content, maxWidth) || element.content,
       frameImage: upgradeDemoAssetUrl(element.frameImage, maxWidth),
     })),
   }));
@@ -431,6 +430,18 @@ async function fetchBundleWithRetry(
   );
 }
 
+// FIX-E: Release canvas memory after toBlob completes.
+// On iOS WebKit, canvas backing stores are not freed until the canvas element
+// is GC'd. Setting width/height to 0 immediately releases the GPU texture.
+function releaseCanvas(canvas: HTMLCanvasElement): void {
+  try {
+    canvas.width = 0;
+    canvas.height = 0;
+  } catch {
+    // ignore
+  }
+}
+
 async function optimizeImageForUpload(
   file: File,
   options: {
@@ -476,7 +487,10 @@ async function optimizeImageForUpload(
   canvas.width = targetW;
   canvas.height = targetH;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
+  if (!ctx) {
+    releaseCanvas(canvas);
+    return file;
+  }
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, targetW, targetH);
@@ -484,6 +498,9 @@ async function optimizeImageForUpload(
   const blob = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, "image/webp", webpQuality),
   );
+  // FIX-E: Always release the canvas backing store immediately after toBlob.
+  releaseCanvas(canvas);
+
   if (!blob || blob.size >= file.size) return file;
   const safeName = (file.name || "image").replace(/\.[^.]+$/, "");
   return new File([blob], `${safeName}.webp`, {
@@ -1172,9 +1189,7 @@ export default function App() {
             setBackgroundMusicUrl(bundle.musicUrl || "");
             setAppBackgroundImageUrl(displayAppBackground);
             setShareEditUntilIso(
-              isDemo
-                ? getDemoEditUntilIso(sid)
-                : bundle.editUntil,
+              isDemo ? getDemoEditUntilIso(sid) : bundle.editUntil,
             );
             setShareStorageUsedBytes(bundle.mediaBytes);
             setSharedViewMode(true);
@@ -1281,7 +1296,9 @@ export default function App() {
     if (isDemoShare) {
       setIsEditing(false);
       setShowFinalizePrompt(false);
-      setShareHint("Demo mode: your changes are not saved to this public link.");
+      setShareHint(
+        "Demo mode: your changes are not saved to this public link.",
+      );
       window.setTimeout(() => setShareHint(null), 2400);
       return;
     }
@@ -1303,7 +1320,9 @@ export default function App() {
     if (!currentShareId) return;
     if (sharedViewMode && !canEditSharedLink) return;
     if (isDemoShare) {
-      setShareHint("Demo mode: music changes stay only in this browser session.");
+      setShareHint(
+        "Demo mode: music changes stay only in this browser session.",
+      );
       window.setTimeout(() => setShareHint(null), 1800);
       return;
     }
@@ -2249,7 +2268,15 @@ export default function App() {
                       type="button"
                       onClick={() => setIsEditing(!isEditing)}
                       className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                      title={isDemoShare ? (isEditing ? "Preview" : "Edit") : isEditing ? "Урьдчилж харах" : "Засах"}
+                      title={
+                        isDemoShare
+                          ? isEditing
+                            ? "Preview"
+                            : "Edit"
+                          : isEditing
+                            ? "Урьдчилж харах"
+                            : "Засах"
+                      }
                     >
                       {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
                     </button>
@@ -2327,7 +2354,15 @@ export default function App() {
                       type="button"
                       onClick={() => setIsEditing(!isEditing)}
                       className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isEditing ? "bg-stone-800 text-white" : "bg-white text-stone-800 hover:bg-stone-100"}`}
-                      title={isDemoShare ? (isEditing ? "Preview" : "Edit") : isEditing ? "Урьдчилж харах" : "Засах"}
+                      title={
+                        isDemoShare
+                          ? isEditing
+                            ? "Preview"
+                            : "Edit"
+                          : isEditing
+                            ? "Урьдчилж харах"
+                            : "Засах"
+                      }
                     >
                       {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
                     </button>
@@ -2410,7 +2445,9 @@ export default function App() {
                   handlePageBackgroundImageUpload={
                     handlePageBackgroundImageUpload
                   }
-                  handleAppBackgroundImageUpload={handleAppBackgroundImageUpload}
+                  handleAppBackgroundImageUpload={
+                    handleAppBackgroundImageUpload
+                  }
                   updatePageBackground={updatePageBackground}
                   updatePageBackgroundImage={updatePageBackgroundImage}
                   updatePagePattern={updatePagePattern}
@@ -2744,22 +2781,57 @@ function FlipPage({
 
   const isInteractive = i === currentLeaf || i === currentLeaf - 1;
 
+  // FIX-J: Staging diagnostics — mount memory monitor when ?diag=1
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!new URLSearchParams(window.location.search).has("diag")) return;
+    let el = document.getElementById("diag-overlay");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "diag-overlay";
+      document.body.appendChild(el);
+    }
+    const diagEl = el;
+    const id = window.setInterval(() => {
+      const mem = (performance as any).memory;
+      const layers = document.querySelectorAll(
+        ".paper-flip-leaf, .paper-face",
+      ).length;
+      diagEl.textContent = mem
+        ? `JS heap: ${(mem.usedJSHeapSize / 1048576).toFixed(1)}MB / ${(mem.jsHeapSizeLimit / 1048576).toFixed(0)}MB\nDOM layers: ${layers}`
+        : `DOM layers: ${layers}\n(no memory API on this browser)`;
+    }, 2000);
+    return () => {
+      window.clearInterval(id);
+      diagEl.remove();
+    };
+  }, []);
+
   return (
     <>
+      {/* FIX-D: The blur-2xl shadow div uses CSS filter:blur() on a large element,
+          creating a full-viewport GPU compositing surface on every frame.
+          On iOS WebKit this alone can exhaust VRAM and trigger jetsam kills.
+          Replace with a simple rgba shadow that needs no compositing layer. */}
       {!liteMode && (
         <motion.div
-          className="absolute top-4 left-1/2 w-[45%] h-[95%] bg-black blur-2xl pointer-events-none rounded-full"
+          className="absolute top-4 left-1/2 w-[45%] h-[95%] pointer-events-none rounded-full"
           style={{
             opacity: shadowOpacity,
             x: shadowX,
             scale: shadowScale,
             zIndex: shadowZIndex,
+            /* FIX-D: box-shadow instead of filter:blur — no compositing surface */
+            background: "rgba(0,0,0,0.22)",
+            boxShadow: "0 0 48px 32px rgba(0,0,0,0.28)",
           }}
         />
       )}
 
+      {/* FIX-C: Add is-flipping class only on the two interactive leaves so
+          will-change:transform is promoted only where needed, not on all leaves. */}
       <motion.div
-        className={`paper-flip-leaf absolute top-0 left-1/2 w-1/2 h-full origin-left preserve-3d ${!isInteractive ? "pointer-events-none" : ""}`}
+        className={`paper-flip-leaf absolute top-0 left-1/2 w-1/2 h-full origin-left preserve-3d ${!isInteractive ? "pointer-events-none" : "is-flipping"}`}
         style={{
           rotateY,
           rotateX,
