@@ -379,8 +379,28 @@ const SHARE_BOOTSTRAP_FAILSAFE_MS =
   SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
 const MAX_UPLOAD_IMAGE_SIDE_PX = 2200;
 const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2560;
+const DEMO_CDN_IMAGE_MAX_WIDTH_PX = 820;
+const DEMO_CDN_IOS_IMAGE_MAX_WIDTH_PX = 640;
+const DEMO_LIGHT_MUSIC_URL =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3";
 const DEMO_LIGHT_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+const DEMO_LIGHT_IMAGE_URLS = [
+  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+  "https://images.unsplash.com/photo-1507525428034-b723cf961d3e",
+  "https://images.unsplash.com/photo-1469474968028-56623f02e42e",
+  "https://images.unsplash.com/photo-1488646953014-85cb44e25828",
+  "https://images.unsplash.com/photo-1519681393784-d120267933ba",
+  "https://images.unsplash.com/photo-1527631746610-bca00a040d60",
+  "https://images.unsplash.com/photo-1491553895911-0055eca6402d",
+  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429",
+] as const;
+const DEMO_LIGHT_BACKGROUND_URLS = [
+  "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
+  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429",
+  "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
+  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+] as const;
 
 function isSandboxDemoShareId(id: string | null | undefined): boolean {
   return id === DEMO_SHARE_ID;
@@ -399,44 +419,80 @@ function getDemoEditUntilIso(id: string): string {
   return new Date(openedAt + DEMO_EDIT_WINDOW_MS).toISOString();
 }
 
-function upgradeDemoAssetUrl(
-  url: string | undefined,
-  maxWidth: number = 1400,
-): string | undefined {
-  if (!url || !url.includes("images.unsplash.com/photo-")) return url;
+function demoCdnWidth(maxWidth: number): number {
+  const deviceCap = isIosWebkitDevice()
+    ? DEMO_CDN_IOS_IMAGE_MAX_WIDTH_PX
+    : DEMO_CDN_IMAGE_MAX_WIDTH_PX;
+  return Math.min(maxWidth, deviceCap);
+}
+
+function buildDemoCdnImageUrl(url: string, maxWidth: number): string {
   try {
     const parsed = new URL(url);
     parsed.searchParams.set("auto", "format");
     parsed.searchParams.set("fit", "crop");
-    parsed.searchParams.set("w", String(maxWidth));
-    parsed.searchParams.set("q", "88");
+    parsed.searchParams.set("w", String(demoCdnWidth(maxWidth)));
+    parsed.searchParams.set("q", "72");
     return parsed.toString();
   } catch {
-    return url.replace(/w=\d+/g, `w=${maxWidth}`).replace(/q=\d+/g, "q=88");
+    return url;
   }
+}
+
+function demoCdnImageAt(index: number, maxWidth: number): string {
+  const url = DEMO_LIGHT_IMAGE_URLS[index % DEMO_LIGHT_IMAGE_URLS.length];
+  return buildDemoCdnImageUrl(url, maxWidth);
+}
+
+function demoCdnBackgroundAt(index: number, maxWidth: number): string {
+  const url =
+    DEMO_LIGHT_BACKGROUND_URLS[index % DEMO_LIGHT_BACKGROUND_URLS.length];
+  return buildDemoCdnImageUrl(url, maxWidth);
 }
 
 function upgradeDemoPagesForHd(
   pages: PageData[],
   maxWidth: number = 1400,
 ): PageData[] {
-  return pages.map((page) => ({
+  return pages.map((page, pageIndex) => ({
     ...page,
-    backgroundImage: upgradeDemoAssetUrl(page.backgroundImage, maxWidth),
-    elements: page.elements.map((element) => {
+    backgroundImage: demoCdnBackgroundAt(pageIndex, maxWidth),
+    elements: page.elements.map((element, elementIndex) => {
       if (element.type === "video") {
         return {
           ...element,
           content: DEMO_LIGHT_VIDEO_URL,
-          width: Math.min(element.width || 300, 260),
-          height: Math.min(element.height || 160, 146),
+          width: Math.min(element.width || 300, 240),
+          height: Math.min(element.height || 160, 136),
+        };
+      }
+
+      const assetIndex = pageIndex * 5 + elementIndex;
+      if (element.type === "image") {
+        return {
+          ...element,
+          content:
+            element.content === "__POLAROID__"
+              ? element.content
+              : demoCdnImageAt(assetIndex, maxWidth),
+          frameImage: element.frameImage
+            ? demoCdnImageAt(assetIndex + 2, maxWidth)
+            : element.frameImage,
+        };
+      }
+
+      if (element.type === "sticker" && /^https?:\/\//i.test(element.content)) {
+        return {
+          ...element,
+          content: demoCdnImageAt(assetIndex, maxWidth),
         };
       }
 
       return {
         ...element,
-        content: upgradeDemoAssetUrl(element.content, maxWidth) || element.content,
-        frameImage: upgradeDemoAssetUrl(element.frameImage, maxWidth),
+        frameImage: element.frameImage
+          ? demoCdnImageAt(assetIndex + 2, maxWidth)
+          : element.frameImage,
       };
     }),
   }));
@@ -1279,15 +1335,15 @@ export default function App() {
               : bundle.pages;
             const displayAppBackground =
               (isDemo
-                ? upgradeDemoAssetUrl(
-                    bundle.appBackgroundImage,
-                    demoAssetMaxWidth,
-                  )
+                ? demoCdnBackgroundAt(99, demoAssetMaxWidth)
                 : bundle.appBackgroundImage) || "";
+            const displayMusicUrl = isDemo
+              ? DEMO_LIGHT_MUSIC_URL
+              : bundle.musicUrl || "";
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
             setPages(displayPages);
-            setBackgroundMusicUrl(bundle.musicUrl || "");
+            setBackgroundMusicUrl(displayMusicUrl);
             setAppBackgroundImageUrl(displayAppBackground);
             setShareEditUntilIso(
               isDemo ? getDemoEditUntilIso(sid) : bundle.editUntil,

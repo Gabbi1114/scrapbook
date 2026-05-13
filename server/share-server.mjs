@@ -40,6 +40,26 @@ const hasR2Config =
 const MAX_SHARE_BYTES = 15 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 60;
 const SANDBOX_DEMO_SHARE_ID = "Es8MGMZo5IweOb8a";
+const DEMO_LIGHT_MUSIC_URL =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3";
+const DEMO_LIGHT_VIDEO_URL =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+const DEMO_LIGHT_IMAGE_URLS = [
+  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+  "https://images.unsplash.com/photo-1507525428034-b723cf961d3e",
+  "https://images.unsplash.com/photo-1469474968028-56623f02e42e",
+  "https://images.unsplash.com/photo-1488646953014-85cb44e25828",
+  "https://images.unsplash.com/photo-1519681393784-d120267933ba",
+  "https://images.unsplash.com/photo-1527631746610-bca00a040d60",
+  "https://images.unsplash.com/photo-1491553895911-0055eca6402d",
+  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429",
+];
+const DEMO_LIGHT_BACKGROUND_URLS = [
+  "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
+  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429",
+  "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
+  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+];
 const execFileAsync = promisify(execFile);
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -111,6 +131,77 @@ async function loadShareOrNull(id) {
   } catch {
     return null;
   }
+}
+
+function demoCdnImageUrl(url, width = 640) {
+  return `${url}?auto=format&fit=crop&w=${width}&q=72`;
+}
+
+function demoCdnImageAt(index, width = 640) {
+  return demoCdnImageUrl(
+    DEMO_LIGHT_IMAGE_URLS[index % DEMO_LIGHT_IMAGE_URLS.length],
+    width,
+  );
+}
+
+function demoCdnBackgroundAt(index) {
+  return demoCdnImageUrl(
+    DEMO_LIGHT_BACKGROUND_URLS[index % DEMO_LIGHT_BACKGROUND_URLS.length],
+    720,
+  );
+}
+
+function withDemoLightCdnAssets(data) {
+  if (!data || !Array.isArray(data.pages)) return data;
+  return {
+    ...data,
+    musicUrl: DEMO_LIGHT_MUSIC_URL,
+    appBackgroundImage: demoCdnBackgroundAt(99),
+    pages: data.pages.map((page, pageIndex) => ({
+      ...page,
+      backgroundImage: demoCdnBackgroundAt(pageIndex),
+      elements: Array.isArray(page.elements)
+        ? page.elements.map((element, elementIndex) => {
+            const assetIndex = pageIndex * 5 + elementIndex;
+            if (element?.type === "video") {
+              return {
+                ...element,
+                content: DEMO_LIGHT_VIDEO_URL,
+                width: Math.min(element.width || 300, 240),
+                height: Math.min(element.height || 160, 136),
+              };
+            }
+            if (element?.type === "image") {
+              return {
+                ...element,
+                content:
+                  element.content === "__POLAROID__"
+                    ? element.content
+                    : demoCdnImageAt(assetIndex),
+                frameImage: element.frameImage
+                  ? demoCdnImageAt(assetIndex + 2)
+                  : element.frameImage,
+              };
+            }
+            if (
+              element?.type === "sticker" &&
+              /^https?:\/\//i.test(element.content || "")
+            ) {
+              return {
+                ...element,
+                content: demoCdnImageAt(assetIndex),
+              };
+            }
+            return {
+              ...element,
+              frameImage: element?.frameImage
+                ? demoCdnImageAt(assetIndex + 2)
+                : element?.frameImage,
+            };
+          })
+        : [],
+    })),
+  };
 }
 
 async function persistShare(id, payload) {
@@ -499,7 +590,11 @@ app.get("/api/share/:id", async (req, res) => {
   if (!record) {
     return res.status(404).json({ error: "not found" });
   }
-  res.type("json").send(JSON.stringify(record.data));
+  const responseData =
+    path.basename(req.params.id) === SANDBOX_DEMO_SHARE_ID
+      ? withDemoLightCdnAssets(record.data)
+      : record.data;
+  res.type("json").send(JSON.stringify(responseData));
 });
 
 app.put("/api/share/:id", async (req, res) => {
