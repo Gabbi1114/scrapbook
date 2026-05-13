@@ -46,6 +46,18 @@ import {
   useBookStageScale,
 } from "./bookStage";
 import { EditorPanelBody, type EditorAccordionId } from "./EditorPanelBody";
+import {
+  DEMO_SHARE_ID,
+  demoImageVariant,
+  demoResponsiveImageAttrs,
+  enableDemoDiagnosticsFromUrl,
+  isDemoRouteActive,
+  isDemoShareId,
+  logDemoDiagnostics,
+  promoteDemoElement,
+  releaseCanvasResource,
+  unpromoteDemoElement,
+} from "./demoFixes";
 
 // ─── z-index layering constants ───────────────────────────────────────────────
 const Z_STEP = 1;
@@ -300,7 +312,6 @@ function toFriendlyFinalizeError(rawError: string): string {
 }
 
 const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
-const DEMO_SHARE_ID = "Es8MGMZo5IweOb8a";
 
 // ─── Demo-route helpers ────────────────────────────────────────────────────────
 // All helpers below are ONLY activated when the URL contains the demo share ID.
@@ -313,18 +324,10 @@ const DEMO_SHARE_ID = "Es8MGMZo5IweOb8a";
  */
 function activateDemoDiagnosticsIfRequested(): void {
   if (typeof window === "undefined") return;
-  if (!window.location.search.includes(DEMO_SHARE_ID)) return;
-  if (!new URLSearchParams(window.location.search).has("diag")) return;
-  (window as any).__demoDiag = true;
-  window.setInterval(() => {
-    const mem = (performance as any).memory;
-    console.log(
-      "[demo-diag] mem:",
-      mem
-        ? `${(mem.usedJSHeapSize / 1048576).toFixed(1)}MB / ${(mem.jsHeapSizeLimit / 1048576).toFixed(0)}MB`
-        : "no memory API",
-    );
-  }, 5000);
+  enableDemoDiagnosticsFromUrl();
+  if (!window.__DEMO_DIAG) return;
+  logDemoDiagnostics("demo diagnostics enabled");
+  window.setInterval(() => logDemoDiagnostics("interval"), 5000);
 }
 
 /**
@@ -335,13 +338,13 @@ function activateDemoDiagnosticsIfRequested(): void {
  */
 function stripIdleWillChange(): void {
   if (typeof document === "undefined") return;
-  if (!window.location.search.includes(DEMO_SHARE_ID)) return;
+  if (!isDemoRouteActive()) return;
   // Give React one frame to finish painting before we audit.
   requestAnimationFrame(() => {
     document.querySelectorAll<HTMLElement>("*").forEach((el) => {
       const wc = el.style.willChange || getComputedStyle(el).willChange;
       // Keep will-change only on elements that are mid-animation (is-flipping).
-      if (wc && wc !== "auto" && !el.classList.contains("is-flipping")) {
+      if (wc && wc !== "auto" && !el.classList.contains("demo-promote")) {
         el.style.willChange = "auto";
       }
     });
@@ -403,7 +406,7 @@ const DEMO_LIGHT_BACKGROUND_URLS = [
 ] as const;
 
 function isSandboxDemoShareId(id: string | null | undefined): boolean {
-  return id === DEMO_SHARE_ID;
+  return isDemoShareId(id);
 }
 
 function getDemoEditUntilIso(id: string): string {
@@ -427,16 +430,7 @@ function demoCdnWidth(maxWidth: number): number {
 }
 
 function buildDemoCdnImageUrl(url: string, maxWidth: number): string {
-  try {
-    const parsed = new URL(url);
-    parsed.searchParams.set("auto", "format");
-    parsed.searchParams.set("fit", "crop");
-    parsed.searchParams.set("w", String(demoCdnWidth(maxWidth)));
-    parsed.searchParams.set("q", "72");
-    return parsed.toString();
-  } catch {
-    return url;
-  }
+  return demoImageVariant(url, demoCdnWidth(maxWidth), 72);
 }
 
 function demoCdnImageAt(index: number, maxWidth: number): string {
@@ -568,12 +562,7 @@ async function fetchBundleWithRetry(
 // On iOS WebKit, canvas backing stores are not freed until the canvas element
 // is GC'd. Setting width/height to 0 immediately releases the GPU texture.
 function releaseCanvas(canvas: HTMLCanvasElement): void {
-  try {
-    canvas.width = 0;
-    canvas.height = 0;
-  } catch {
-    // ignore
-  }
+  releaseCanvasResource(canvas);
 }
 
 async function optimizeImageForUpload(
@@ -791,7 +780,11 @@ export default function App() {
   const hasAudioGestureRef = useRef(false);
   const autosaveAbortRef = useRef<AbortController | null>(null);
   const autosaveSeqRef = useRef(0);
+  const wasEditingRef = useRef(isEditing);
   const preferLiteEffects = isIosWebkitDevice();
+  const isDemoShare = sharedViewMode && isSandboxDemoShareId(currentShareId);
+  const isDemoRoute = isDemoShare || isDemoRouteActive();
+  const [demoHdIntent, setDemoHdIntent] = useState(false);
 
   useEffect(() => {
     editorPlacementRef.current = editorPlacement;
@@ -800,10 +793,54 @@ export default function App() {
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.body.classList.toggle("is-ios", preferLiteEffects);
+    document.body.classList.toggle("demo-route", isDemoRoute);
     return () => {
       document.body.classList.remove("is-ios");
+      document.body.classList.remove("demo-route");
     };
-  }, [preferLiteEffects]);
+  }, [isDemoRoute, preferLiteEffects]);
+
+  useEffect(() => {
+    if (!isDemoRoute || demoHdIntent) return;
+    const onIntent = () => {
+      setDemoHdIntent(true);
+      logDemoDiagnostics("first user intent: hd media enabled");
+    };
+    window.addEventListener("pointerdown", onIntent, { once: true });
+    window.addEventListener("keydown", onIntent, { once: true });
+    window.addEventListener("touchstart", onIntent, {
+      once: true,
+      passive: true,
+    });
+    return () => {
+      window.removeEventListener("pointerdown", onIntent);
+      window.removeEventListener("keydown", onIntent);
+      window.removeEventListener("touchstart", onIntent);
+    };
+  }, [demoHdIntent, isDemoRoute]);
+
+  useEffect(() => {
+    if (!isDemoRoute) {
+      wasEditingRef.current = isEditing;
+      return;
+    }
+    if (wasEditingRef.current && !isEditing) {
+      document
+        .querySelectorAll<HTMLCanvasElement>("canvas")
+        .forEach(releaseCanvasResource);
+      logDemoDiagnostics("editor close");
+    }
+    wasEditingRef.current = isEditing;
+  }, [isDemoRoute, isEditing]);
+
+  useEffect(() => {
+    if (!isDemoRoute) return;
+    return () => {
+      document
+        .querySelectorAll<HTMLCanvasElement>("canvas")
+        .forEach(releaseCanvasResource);
+    };
+  }, [isDemoRoute]);
 
   useEffect(() => {
     if (isWindowLoaded) return;
@@ -1353,6 +1390,9 @@ export default function App() {
             setHistory([displayPages]);
             setHistoryIndex(0);
             setShareHint(null);
+            if (isDemo) {
+              window.setTimeout(() => logDemoDiagnostics("demo load"), 0);
+            }
           } else {
             setShareLinkLoadError("failed");
             setShareHint(null);
@@ -1408,7 +1448,6 @@ export default function App() {
   const shareEditDeadlineMs = shareEditUntilIso
     ? Date.parse(shareEditUntilIso)
     : NaN;
-  const isDemoShare = sharedViewMode && isSandboxDemoShareId(currentShareId);
   const isShareEditExpired =
     shareEditUntilIso !== null &&
     Number.isFinite(shareEditDeadlineMs) &&
@@ -1804,7 +1843,9 @@ export default function App() {
     let preparedFile = file;
     try {
       preparedFile = await optimizeImageForUpload(file, {
-        maxSide: MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX,
+        maxSide: isDemoShare
+          ? getDemoImageMaxWidth()
+          : MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX,
         minRecompressBytes: 5_000_000,
         webpQuality: 0.92,
       });
@@ -1813,6 +1854,10 @@ export default function App() {
     }
     if (isDemoShare) {
       setShareHint("Demo background preview added. It will not save publicly.");
+      window.setTimeout(
+        () => logDemoDiagnostics("after adding background image"),
+        0,
+      );
       window.setTimeout(() => setShareHint(null), 1800);
       return URL.createObjectURL(preparedFile);
     }
@@ -1941,7 +1986,10 @@ export default function App() {
       void (async () => {
         let preparedFile = file;
         try {
-          preparedFile = await optimizeImageForUpload(file);
+          preparedFile = await optimizeImageForUpload(
+            file,
+            isDemoShare ? { maxSide: getDemoImageMaxWidth() } : {},
+          );
         } catch {
           preparedFile = file;
         }
@@ -1962,6 +2010,7 @@ export default function App() {
             width: targetWidth,
             height: targetHeight,
           });
+          window.setTimeout(() => logDemoDiagnostics("after adding image"), 0);
           setShareHint("Demo image added. It will not save publicly.");
           window.setTimeout(() => setShareHint(null), 1800);
           return;
@@ -2057,6 +2106,7 @@ export default function App() {
         width: targetWidth,
         height: targetHeight,
       });
+      window.setTimeout(() => logDemoDiagnostics("after adding video"), 0);
       setShareHint("Demo video added. It will not save publicly.");
       window.setTimeout(() => setShareHint(null), 1800);
       e.target.value = "";
@@ -2179,7 +2229,7 @@ export default function App() {
   const appShellStyle: React.CSSProperties = appBackgroundImage
     ? {
         backgroundColor: appBackgroundColor,
-        backgroundImage: cssImageUrl(appBackgroundImage),
+        ...(isDemoShare ? {} : { backgroundImage: cssImageUrl(appBackgroundImage) }),
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
         backgroundSize: "cover",
@@ -2208,11 +2258,24 @@ export default function App() {
         </div>
       )}
       <div
-        className="h-dvh font-sans flex touch-auto flex-col overflow-hidden"
+        className={`h-dvh font-sans flex touch-auto flex-col overflow-hidden ${isDemoShare ? "demo-route relative" : ""}`}
         style={appShellStyle}
       >
+        {isDemoShare && appBackgroundImage && (
+          <DemoResponsiveImage
+            src={appBackgroundImage}
+            alt=""
+            isDemoShare={isDemoShare}
+            hdReady={demoHdIntent}
+            sizes="100vw"
+            maxWidth={1400}
+            pictureClassName="pointer-events-none absolute inset-0 z-0 block"
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        )}
         {/* Sidebar is overlaid (not flex-shrink) so book size stays the same in edit vs preview */}
-        <div className="flex-1 relative min-h-0">
+        <div className="flex-1 relative z-10 min-h-0">
           {sharedViewMode && !isPureViewOnly && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 mx-2 max-w-lg text-center text-xs sm:text-sm text-white bg-white/15 rounded-xl py-2 px-3 sm:px-4 border border-white/25 shadow-lg">
               {!canEditSharedLink ? (
@@ -2292,8 +2355,8 @@ export default function App() {
                 onClick={turnPrev}
                 disabled={currentLeaf === 0}
                 className={`absolute left-2 top-1/2 -translate-y-1/2 sm:left-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
-                  preferLiteEffects
-                    ? "bg-white/35 hover:bg-white/45"
+                  preferLiteEffects || isDemoShare
+                    ? "demo-frosted bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
                 }`}
                 aria-label={isDemoShare ? "Previous page" : "Өмнөх хуудас"}
@@ -2346,6 +2409,8 @@ export default function App() {
                             setVideoMuted={setVideoMuted}
                             selectedPageId={selectedPageId}
                             setSelectedPageId={setSelectedPageId}
+                            isDemoShare={isDemoShare}
+                            demoHdIntent={demoHdIntent}
                           />
                         </MotionConfig>
                       ) : (
@@ -2372,6 +2437,8 @@ export default function App() {
                               setSelectedPageId={setSelectedPageId}
                               bendIntensity={bendIntensity}
                               liteMode={preferLiteEffects}
+                              isDemoShare={isDemoShare}
+                              demoHdIntent={demoHdIntent}
                             />
                           );
                         })
@@ -2386,8 +2453,8 @@ export default function App() {
                 onClick={turnNext}
                 disabled={currentLeaf === totalLeaves}
                 className={`absolute right-2 top-1/2 -translate-y-1/2 sm:right-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
-                  preferLiteEffects
-                    ? "bg-white/35 hover:bg-white/45"
+                  preferLiteEffects || isDemoShare
+                    ? "demo-frosted bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
                 }`}
                 aria-label={isDemoShare ? "Next page" : "Дараагийн хуудас"}
@@ -2414,8 +2481,8 @@ export default function App() {
               )}
               <div
                 className={`px-6 py-3 rounded-full flex items-center gap-4 border border-white/20 ${
-                  preferLiteEffects
-                    ? "bg-white/20 shadow-lg"
+                  preferLiteEffects || isDemoShare
+                    ? "demo-frosted bg-white/20 shadow-lg"
                     : "bg-white/10 backdrop-blur-md shadow-xl"
                 }`}
               >
@@ -2698,6 +2765,8 @@ function EditingSpread({
   setVideoMuted,
   selectedPageId,
   setSelectedPageId,
+  isDemoShare,
+  demoHdIntent,
 }: {
   pages: PageData[];
   visibleLeftPageId: string | null;
@@ -2719,6 +2788,8 @@ function EditingSpread({
   setVideoMuted: (id: string, muted: boolean) => void;
   selectedPageId: string | null;
   setSelectedPageId: (id: string | null) => void;
+  isDemoShare: boolean;
+  demoHdIntent: boolean;
 }) {
   const left = visibleLeftPageId
     ? pages.find((p) => p.id === visibleLeftPageId)
@@ -2752,6 +2823,8 @@ function EditingSpread({
               setVideoMuted={setVideoMuted}
               isActive={selectedPageId === left.id}
               onSelectPage={() => setSelectedPageId(left.id)}
+              isDemoShare={isDemoShare}
+              demoHdIntent={demoHdIntent}
             />
           </div>
           <div
@@ -2769,6 +2842,8 @@ function EditingSpread({
               setVideoMuted={setVideoMuted}
               isActive={selectedPageId === right.id}
               onSelectPage={() => setSelectedPageId(right.id)}
+              isDemoShare={isDemoShare}
+              demoHdIntent={demoHdIntent}
             />
           </div>
         </>
@@ -2789,6 +2864,8 @@ function EditingSpread({
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === left.id}
             onSelectPage={() => setSelectedPageId(left.id)}
+            isDemoShare={isDemoShare}
+            demoHdIntent={demoHdIntent}
           />
         </div>
       )}
@@ -2808,6 +2885,8 @@ function EditingSpread({
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === right.id}
             onSelectPage={() => setSelectedPageId(right.id)}
+            isDemoShare={isDemoShare}
+            demoHdIntent={demoHdIntent}
           />
         </div>
       )}
@@ -2832,6 +2911,8 @@ function FlipPage({
   setSelectedPageId,
   bendIntensity = 1.2,
   liteMode = false,
+  isDemoShare = false,
+  demoHdIntent = false,
 }: any) {
   const isFlipped = i < currentLeaf;
 
@@ -2937,6 +3018,17 @@ function FlipPage({
   }, [isFlipped, rotateYTarget]);
 
   const isInteractive = i === currentLeaf || i === currentLeaf - 1;
+  const [isDemoPromoted, setIsDemoPromoted] = useState(false);
+
+  useEffect(() => {
+    if (!isDemoShare || !isInteractive) {
+      setIsDemoPromoted(false);
+      return;
+    }
+    setIsDemoPromoted(true);
+    const id = window.setTimeout(() => setIsDemoPromoted(false), 700);
+    return () => window.clearTimeout(id);
+  }, [isDemoShare, isFlipped, isInteractive]);
 
   // FIX-J (demo): Diagnostics overlay — only on leaf i===0 to avoid creating
   // and destroying the overlay on every leaf mount/unmount cycle.
@@ -2991,7 +3083,7 @@ function FlipPage({
       {/* FIX-C: Add is-flipping class only on the two interactive leaves so
           will-change:transform is promoted only where needed, not on all leaves. */}
       <motion.div
-        className={`paper-flip-leaf absolute top-0 left-1/2 w-1/2 h-full origin-left preserve-3d ${!isInteractive ? "pointer-events-none" : "is-flipping"}`}
+        className={`paper-flip-leaf absolute top-0 left-1/2 w-1/2 h-full origin-left preserve-3d ${!isInteractive ? "pointer-events-none" : "is-flipping"} ${isDemoPromoted ? "demo-promote" : ""}`}
         style={{
           rotateY,
           rotateX,
@@ -3016,6 +3108,8 @@ function FlipPage({
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === leaf.front?.id}
             onSelectPage={() => isEditing && setSelectedPageId(leaf.front?.id)}
+            isDemoShare={isDemoShare}
+            demoHdIntent={demoHdIntent}
           />
 
           {/* Static spine shadow */}
@@ -3071,6 +3165,8 @@ function FlipPage({
             setVideoMuted={setVideoMuted}
             isActive={selectedPageId === leaf.back?.id}
             onSelectPage={() => isEditing && setSelectedPageId(leaf.back?.id)}
+            isDemoShare={isDemoShare}
+            demoHdIntent={demoHdIntent}
           />
 
           {/* Static spine shadow */}
@@ -3113,6 +3209,62 @@ function FlipPage({
   );
 }
 
+function DemoResponsiveImage({
+  src,
+  isDemoShare,
+  hdReady,
+  alt,
+  sizes,
+  className,
+  pictureClassName,
+  style,
+  maxWidth = 1280,
+  draggable = false,
+}: {
+  src: string;
+  isDemoShare: boolean;
+  hdReady: boolean;
+  alt: string;
+  sizes: string;
+  className?: string;
+  pictureClassName?: string;
+  style?: React.CSSProperties;
+  maxWidth?: number;
+  draggable?: boolean;
+}) {
+  if (!isDemoShare) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        sizes={sizes}
+        className={className}
+        style={style}
+        draggable={draggable}
+      />
+    );
+  }
+  const attrs = demoResponsiveImageAttrs(src, hdReady, maxWidth);
+  return (
+    <picture className={pictureClassName}>
+      {attrs.srcSet && <source srcSet={attrs.srcSet} sizes={sizes} />}
+      <img
+        src={attrs.src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        sizes={sizes}
+        data-hi={attrs.dataHi}
+        className={className}
+        style={style}
+        draggable={draggable}
+      />
+    </picture>
+  );
+}
+
 function PageContent({
   page,
   isEditing,
@@ -3125,6 +3277,8 @@ function PageContent({
   setVideoMuted,
   isActive,
   onSelectPage,
+  isDemoShare,
+  demoHdIntent,
 }: {
   page?: PageData;
   isEditing: boolean;
@@ -3145,12 +3299,15 @@ function PageContent({
   setVideoMuted: (id: string, muted: boolean) => void;
   isActive: boolean;
   onSelectPage: () => void;
+  isDemoShare: boolean;
+  demoHdIntent: boolean;
 }) {
   if (!page) return <div className="w-full h-full bg-stone-200" />;
   const useClassBackground = page.background.startsWith("bg-");
   const pageBackgroundImage = page.backgroundImage?.trim();
+  const renderDemoImageBackground = isDemoShare && Boolean(pageBackgroundImage);
   const pageBackgroundStyle: React.CSSProperties | undefined =
-    pageBackgroundImage
+    pageBackgroundImage && !renderDemoImageBackground
       ? {
           ...(useClassBackground ? {} : { backgroundColor: page.background }),
           backgroundImage: cssImageUrl(pageBackgroundImage),
@@ -3173,6 +3330,19 @@ function PageContent({
         }
       }}
     >
+      {renderDemoImageBackground && pageBackgroundImage && (
+        <DemoResponsiveImage
+          src={pageBackgroundImage}
+          alt=""
+          isDemoShare={isDemoShare}
+          hdReady={demoHdIntent}
+          sizes="50vw"
+          maxWidth={1280}
+          pictureClassName="pointer-events-none absolute inset-0 z-0 block"
+          className="h-full w-full object-cover"
+          draggable={false}
+        />
+      )}
       {page.elements.map((el) => (
         <DraggableElement
           key={el.id}
@@ -3193,6 +3363,8 @@ function PageContent({
           onVideoAudibleChange={onVideoAudibleChange ?? (() => {})}
           videoMuted={isVideoMuted(el.id)}
           setVideoMuted={(muted) => setVideoMuted(el.id, muted)}
+          isDemoShare={isDemoShare}
+          demoHdIntent={demoHdIntent}
         />
       ))}
     </div>
@@ -3210,6 +3382,8 @@ function DraggableElement({
   onVideoAudibleChange,
   videoMuted,
   setVideoMuted,
+  isDemoShare,
+  demoHdIntent,
 }: {
   key?: React.Key;
   element: PageElement;
@@ -3222,6 +3396,8 @@ function DraggableElement({
   onVideoAudibleChange: (id: string, audible: boolean) => void;
   videoMuted: boolean;
   setVideoMuted: (muted: boolean) => void;
+  isDemoShare: boolean;
+  demoHdIntent: boolean;
 }) {
   const stageScale = useBookStageScale();
   const inv = stageScale > 0 ? 1 / stageScale : 1;
@@ -3229,6 +3405,7 @@ function DraggableElement({
   const [isTransforming, setIsTransforming] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
+  const [isDemoVideoArmed, setIsDemoVideoArmed] = useState(false);
   const isPolaroid =
     element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
   const lastReportedAudibleRef = useRef(false);
@@ -3266,6 +3443,10 @@ function DraggableElement({
     e.stopPropagation();
     e.preventDefault();
     setIsTransforming(true);
+    const promoted = (e.currentTarget as HTMLElement).closest(
+      ".scrapbook-element",
+    ) as HTMLElement | null;
+    if (isDemoShare) promoteDemoElement(promoted);
     const sx = e.clientX;
     const sy = e.clientY;
     const ox = element.x;
@@ -3321,6 +3502,7 @@ function DraggableElement({
       const { nx, ny, nw, nh } = calc(dx, dy);
       onUpdate({ ...element, x: nx, y: ny, width: nw, height: nh }, true);
       setIsTransforming(false);
+      if (isDemoShare) unpromoteDemoElement(promoted);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -3337,6 +3519,7 @@ function DraggableElement({
     const target = e.currentTarget as HTMLButtonElement;
     const parent = target.parentElement;
     if (!parent) return;
+    if (isDemoShare) promoteDemoElement(parent);
     const rect = parent.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -3353,6 +3536,7 @@ function DraggableElement({
       const delta = (now - startAngle) * (180 / Math.PI);
       onUpdate({ ...element, rotation: Math.round(base + delta) }, true);
       setIsTransforming(false);
+      if (isDemoShare) unpromoteDemoElement(parent);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -3381,7 +3565,11 @@ function DraggableElement({
   useEffect(() => {
     if (element.type !== "video") return;
     // Video should count as "audible" only while its page is actually visible.
-    const audible = !videoMuted && isVideoVisible && !document.hidden;
+    const audible =
+      (!isDemoShare || isDemoVideoArmed) &&
+      !videoMuted &&
+      isVideoVisible &&
+      !document.hidden;
     if (lastReportedAudibleRef.current !== audible) {
       onVideoAudibleChange(element.id, audible);
       lastReportedAudibleRef.current = audible;
@@ -3389,6 +3577,8 @@ function DraggableElement({
   }, [
     element.type,
     element.id,
+    isDemoShare,
+    isDemoVideoArmed,
     isVideoVisible,
     onVideoAudibleChange,
     videoMuted,
@@ -3400,8 +3590,16 @@ function DraggableElement({
       if (lastReportedAudibleRef.current) {
         onVideoAudibleChange(element.id, false);
       }
+      if (isDemoShare) {
+        const el = videoRef.current;
+        if (el) {
+          el.pause();
+          el.removeAttribute("src");
+          el.load();
+        }
+      }
     },
-    [element.type, element.id, onVideoAudibleChange],
+    [element.type, element.id, isDemoShare, onVideoAudibleChange],
   );
 
   useEffect(() => {
@@ -3409,7 +3607,8 @@ function DraggableElement({
     const el = videoRef.current;
     if (!el) return;
     const syncPlayback = () => {
-      const shouldPlay = isVideoVisible && !document.hidden;
+      const shouldPlay =
+        (!isDemoShare || isDemoVideoArmed) && isVideoVisible && !document.hidden;
       if (shouldPlay) {
         void el.play().catch(() => {});
       } else {
@@ -3419,7 +3618,7 @@ function DraggableElement({
     syncPlayback();
     document.addEventListener("visibilitychange", syncPlayback);
     return () => document.removeEventListener("visibilitychange", syncPlayback);
-  }, [element.type, isVideoVisible]);
+  }, [element.type, isDemoShare, isDemoVideoArmed, isVideoVisible]);
 
   return (
     <motion.div
@@ -3431,9 +3630,19 @@ function DraggableElement({
         if (!isEditing || isTransforming) return;
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-transform-handle="true"]')) return;
+        const current = e.currentTarget as HTMLElement;
+        if (isDemoShare) {
+          promoteDemoElement(current);
+          const clearPromotion = () => unpromoteDemoElement(current);
+          window.addEventListener("pointerup", clearPromotion, { once: true });
+          window.addEventListener("pointercancel", clearPromotion, {
+            once: true,
+          });
+        }
         dragControls.start(e);
       }}
       onDragEnd={(e, info) => {
+        if (isDemoShare) unpromoteDemoElement(e.currentTarget as HTMLElement);
         const next = {
           ...element,
           x: element.x + info.offset.x,
@@ -3520,12 +3729,13 @@ function DraggableElement({
           >
             <div className="px-3 pt-3 pb-8 h-full">
               {element.frameImage ? (
-                <img
+                <DemoResponsiveImage
                   src={element.frameImage}
                   alt="polaroid"
-                  loading="lazy"
-                  decoding="async"
+                  isDemoShare={isDemoShare}
+                  hdReady={demoHdIntent}
                   sizes="25vw"
+                  maxWidth={960}
                   className="h-full w-full rounded-[2px] border border-black/10 object-cover"
                   draggable={false}
                 />
@@ -3540,12 +3750,13 @@ function DraggableElement({
           </div>
         ))}
       {element.type === "image" && (
-        <img
+        <DemoResponsiveImage
           src={element.content}
           alt="scrapbook"
-          loading="lazy"
-          decoding="async"
+          isDemoShare={isDemoShare}
+          hdReady={demoHdIntent}
           sizes="30vw"
+          maxWidth={1280}
           className="object-cover"
           style={{
             width: element.width || 192,
@@ -3555,32 +3766,58 @@ function DraggableElement({
         />
       )}
       {element.type === "video" && (
-        <video
-          ref={videoRef}
-          src={element.content}
-          autoPlay
-          loop
-          muted={videoMuted}
-          playsInline
-          preload="metadata"
-          className="object-cover rounded-sm bg-black"
-          style={{
-            width: element.width || 320,
-            height: element.height || 180,
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isEditing) onSelect();
-            const el = videoRef.current;
-            if (!el) return;
-            const nextMuted = !videoMuted;
-            el.muted = nextMuted;
-            setVideoMuted(nextMuted);
-            // Apply ducking immediately on user click (don't wait for effect tick).
-            onVideoAudibleChange(element.id, !nextMuted);
-            void el.play().catch(() => {});
-          }}
-        />
+        <div className="relative inline-block">
+          <video
+            ref={videoRef}
+            src={!isDemoShare || isDemoVideoArmed ? element.content : undefined}
+            poster={
+              isDemoShare
+                ? demoImageVariant(DEMO_LIGHT_IMAGE_URLS[1], 640, 72)
+                : undefined
+            }
+            autoPlay={!isDemoShare}
+            loop
+            muted={videoMuted}
+            playsInline
+            preload={isDemoShare ? "none" : "metadata"}
+            className="object-cover rounded-sm bg-black"
+            style={{
+              width: element.width || 320,
+              height: element.height || 180,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isEditing) onSelect();
+              if (isDemoShare && !isDemoVideoArmed) {
+                setIsDemoVideoArmed(true);
+                logDemoDiagnostics("demo video armed");
+                return;
+              }
+              const el = videoRef.current;
+              if (!el) return;
+              const nextMuted = !videoMuted;
+              el.muted = nextMuted;
+              setVideoMuted(nextMuted);
+              // Apply ducking immediately on user click (don't wait for effect tick).
+              onVideoAudibleChange(element.id, !nextMuted);
+              void el.play().catch(() => {});
+            }}
+          />
+          {isDemoShare && !isDemoVideoArmed && (
+            <button
+              type="button"
+              className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/20 text-xs font-semibold text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isEditing) onSelect();
+                setIsDemoVideoArmed(true);
+                logDemoDiagnostics("demo video armed");
+              }}
+            >
+              Tap to preview
+            </button>
+          )}
+        </div>
       )}
       {isEditing && isSelected && (
         <>

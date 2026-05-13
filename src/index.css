@@ -298,6 +298,26 @@ textarea,
   will-change: transform;
 }
 
+/* Demo-only promotion: iPhone Safari keeps stable unless layers are temporary. */
+.demo-route .paper-flip-leaf.is-flipping {
+  will-change: auto;
+}
+
+.demo-route .demo-promote {
+  will-change: transform;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+.demo-route .demo-frosted,
+.demo-route .backdrop-blur-sm,
+.demo-route .backdrop-blur-md,
+.demo-route [class*="backdrop-blur"] {
+  background: rgba(0, 0, 0, 0.36);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 /* FIX-G: contain:layout style paint limits compositing surface propagation.
    Combined with backface-visibility:hidden this prevents WebKit from creating
    extra GPU layers for each paper overlay inside the 3D context. */
