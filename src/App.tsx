@@ -785,6 +785,14 @@ export default function App() {
   const isDemoShare = sharedViewMode && isSandboxDemoShareId(currentShareId);
   const isDemoRoute = isDemoShare || isDemoRouteActive();
   const [demoHdIntent, setDemoHdIntent] = useState(false);
+  const [demoArmedVideoIds, setDemoArmedVideoIds] = useState<
+    Record<string, boolean>
+  >({});
+  const armDemoVideo = useCallback((id: string) => {
+    setDemoArmedVideoIds((prev) =>
+      prev[id] ? prev : { ...prev, [id]: true },
+    );
+  }, []);
 
   useEffect(() => {
     editorPlacementRef.current = editorPlacement;
@@ -2411,6 +2419,8 @@ export default function App() {
                             setSelectedPageId={setSelectedPageId}
                             isDemoShare={isDemoShare}
                             demoHdIntent={demoHdIntent}
+                            demoArmedVideoIds={demoArmedVideoIds}
+                            armDemoVideo={armDemoVideo}
                           />
                         </MotionConfig>
                       ) : (
@@ -2439,6 +2449,8 @@ export default function App() {
                               liteMode={preferLiteEffects}
                               isDemoShare={isDemoShare}
                               demoHdIntent={demoHdIntent}
+                              demoArmedVideoIds={demoArmedVideoIds}
+                              armDemoVideo={armDemoVideo}
                             />
                           );
                         })
@@ -2767,6 +2779,8 @@ function EditingSpread({
   setSelectedPageId,
   isDemoShare,
   demoHdIntent,
+  demoArmedVideoIds,
+  armDemoVideo,
 }: {
   pages: PageData[];
   visibleLeftPageId: string | null;
@@ -2790,6 +2804,8 @@ function EditingSpread({
   setSelectedPageId: (id: string | null) => void;
   isDemoShare: boolean;
   demoHdIntent: boolean;
+  demoArmedVideoIds: Record<string, boolean>;
+  armDemoVideo: (id: string) => void;
 }) {
   const left = visibleLeftPageId
     ? pages.find((p) => p.id === visibleLeftPageId)
@@ -2825,6 +2841,8 @@ function EditingSpread({
               onSelectPage={() => setSelectedPageId(left.id)}
               isDemoShare={isDemoShare}
               demoHdIntent={demoHdIntent}
+              demoArmedVideoIds={demoArmedVideoIds}
+              armDemoVideo={armDemoVideo}
             />
           </div>
           <div
@@ -2844,6 +2862,8 @@ function EditingSpread({
               onSelectPage={() => setSelectedPageId(right.id)}
               isDemoShare={isDemoShare}
               demoHdIntent={demoHdIntent}
+              demoArmedVideoIds={demoArmedVideoIds}
+              armDemoVideo={armDemoVideo}
             />
           </div>
         </>
@@ -2866,6 +2886,8 @@ function EditingSpread({
             onSelectPage={() => setSelectedPageId(left.id)}
             isDemoShare={isDemoShare}
             demoHdIntent={demoHdIntent}
+            demoArmedVideoIds={demoArmedVideoIds}
+            armDemoVideo={armDemoVideo}
           />
         </div>
       )}
@@ -2887,6 +2909,8 @@ function EditingSpread({
             onSelectPage={() => setSelectedPageId(right.id)}
             isDemoShare={isDemoShare}
             demoHdIntent={demoHdIntent}
+            demoArmedVideoIds={demoArmedVideoIds}
+            armDemoVideo={armDemoVideo}
           />
         </div>
       )}
@@ -2913,6 +2937,8 @@ function FlipPage({
   liteMode = false,
   isDemoShare = false,
   demoHdIntent = false,
+  demoArmedVideoIds = {},
+  armDemoVideo = () => {},
 }: any) {
   const isFlipped = i < currentLeaf;
 
@@ -3110,6 +3136,8 @@ function FlipPage({
             onSelectPage={() => isEditing && setSelectedPageId(leaf.front?.id)}
             isDemoShare={isDemoShare}
             demoHdIntent={demoHdIntent}
+            demoArmedVideoIds={demoArmedVideoIds}
+            armDemoVideo={armDemoVideo}
           />
 
           {/* Static spine shadow */}
@@ -3167,6 +3195,8 @@ function FlipPage({
             onSelectPage={() => isEditing && setSelectedPageId(leaf.back?.id)}
             isDemoShare={isDemoShare}
             demoHdIntent={demoHdIntent}
+            demoArmedVideoIds={demoArmedVideoIds}
+            armDemoVideo={armDemoVideo}
           />
 
           {/* Static spine shadow */}
@@ -3279,6 +3309,8 @@ function PageContent({
   onSelectPage,
   isDemoShare,
   demoHdIntent,
+  demoArmedVideoIds,
+  armDemoVideo,
 }: {
   page?: PageData;
   isEditing: boolean;
@@ -3301,6 +3333,8 @@ function PageContent({
   onSelectPage: () => void;
   isDemoShare: boolean;
   demoHdIntent: boolean;
+  demoArmedVideoIds: Record<string, boolean>;
+  armDemoVideo: (id: string) => void;
 }) {
   if (!page) return <div className="w-full h-full bg-stone-200" />;
   const useClassBackground = page.background.startsWith("bg-");
@@ -3365,6 +3399,8 @@ function PageContent({
           setVideoMuted={(muted) => setVideoMuted(el.id, muted)}
           isDemoShare={isDemoShare}
           demoHdIntent={demoHdIntent}
+          isDemoVideoArmed={Boolean(demoArmedVideoIds[el.id])}
+          armDemoVideo={armDemoVideo}
         />
       ))}
     </div>
@@ -3384,6 +3420,8 @@ function DraggableElement({
   setVideoMuted,
   isDemoShare,
   demoHdIntent,
+  isDemoVideoArmed,
+  armDemoVideo,
 }: {
   key?: React.Key;
   element: PageElement;
@@ -3398,6 +3436,8 @@ function DraggableElement({
   setVideoMuted: (muted: boolean) => void;
   isDemoShare: boolean;
   demoHdIntent: boolean;
+  isDemoVideoArmed: boolean;
+  armDemoVideo: (id: string) => void;
 }) {
   const stageScale = useBookStageScale();
   const inv = stageScale > 0 ? 1 / stageScale : 1;
@@ -3405,10 +3445,11 @@ function DraggableElement({
   const [isTransforming, setIsTransforming] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
-  const [isDemoVideoArmed, setIsDemoVideoArmed] = useState(false);
+  const [isDemoVideoDomArmed, setIsDemoVideoDomArmed] = useState(false);
   const isPolaroid =
     element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
   const lastReportedAudibleRef = useRef(false);
+  const onVideoAudibleChangeRef = useRef(onVideoAudibleChange);
   const canResize =
     element.type === "image" ||
     element.type === "video" ||
@@ -3434,6 +3475,33 @@ function DraggableElement({
             ? 120
             : 192)
     : undefined;
+  const isDemoVideoReady = isDemoVideoArmed || isDemoVideoDomArmed;
+
+  const armCurrentDemoVideo = useCallback(
+    (event?: React.SyntheticEvent) => {
+      event?.stopPropagation();
+      event?.preventDefault();
+      if (isEditing) onSelect();
+      if (!isDemoShare || element.type !== "video") return;
+      armDemoVideo(element.id);
+      setIsDemoVideoDomArmed(true);
+      const el = videoRef.current;
+      if (el && !el.getAttribute("src")) {
+        el.src = element.content;
+        el.load();
+      }
+      logDemoDiagnostics("demo video armed");
+    },
+    [
+      armDemoVideo,
+      element.content,
+      element.id,
+      element.type,
+      isDemoShare,
+      isEditing,
+      onSelect,
+    ],
+  );
 
   const startResize = (
     e: React.PointerEvent,
@@ -3548,6 +3616,10 @@ function DraggableElement({
     "absolute z-60 h-3 w-3 rounded-full border border-white bg-stone-800 shadow-md";
 
   useEffect(() => {
+    onVideoAudibleChangeRef.current = onVideoAudibleChange;
+  }, [onVideoAudibleChange]);
+
+  useEffect(() => {
     if (element.type !== "video") return;
     const el = videoRef.current;
     if (!el) return;
@@ -3566,21 +3638,20 @@ function DraggableElement({
     if (element.type !== "video") return;
     // Video should count as "audible" only while its page is actually visible.
     const audible =
-      (!isDemoShare || isDemoVideoArmed) &&
+      (!isDemoShare || isDemoVideoReady) &&
       !videoMuted &&
       isVideoVisible &&
       !document.hidden;
     if (lastReportedAudibleRef.current !== audible) {
-      onVideoAudibleChange(element.id, audible);
+      onVideoAudibleChangeRef.current(element.id, audible);
       lastReportedAudibleRef.current = audible;
     }
   }, [
     element.type,
     element.id,
     isDemoShare,
-    isDemoVideoArmed,
+    isDemoVideoReady,
     isVideoVisible,
-    onVideoAudibleChange,
     videoMuted,
   ]);
 
@@ -3588,7 +3659,7 @@ function DraggableElement({
     () => () => {
       if (element.type !== "video") return;
       if (lastReportedAudibleRef.current) {
-        onVideoAudibleChange(element.id, false);
+        onVideoAudibleChangeRef.current(element.id, false);
       }
       if (isDemoShare) {
         const el = videoRef.current;
@@ -3599,7 +3670,7 @@ function DraggableElement({
         }
       }
     },
-    [element.type, element.id, isDemoShare, onVideoAudibleChange],
+    [element.type, element.id, isDemoShare],
   );
 
   useEffect(() => {
@@ -3608,7 +3679,7 @@ function DraggableElement({
     if (!el) return;
     const syncPlayback = () => {
       const shouldPlay =
-        (!isDemoShare || isDemoVideoArmed) && isVideoVisible && !document.hidden;
+        (!isDemoShare || isDemoVideoReady) && isVideoVisible && !document.hidden;
       if (shouldPlay) {
         void el.play().catch(() => {});
       } else {
@@ -3618,7 +3689,7 @@ function DraggableElement({
     syncPlayback();
     document.addEventListener("visibilitychange", syncPlayback);
     return () => document.removeEventListener("visibilitychange", syncPlayback);
-  }, [element.type, isDemoShare, isDemoVideoArmed, isVideoVisible]);
+  }, [element.type, isDemoShare, isDemoVideoReady, isVideoVisible]);
 
   return (
     <motion.div
@@ -3627,6 +3698,15 @@ function DraggableElement({
       dragListener={false}
       dragMomentum={false}
       onPointerDown={(e) => {
+        if (
+          !isEditing &&
+          isDemoShare &&
+          element.type === "video" &&
+          !isDemoVideoReady
+        ) {
+          armCurrentDemoVideo(e);
+          return;
+        }
         if (!isEditing || isTransforming) return;
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-transform-handle="true"]')) return;
@@ -3769,7 +3849,7 @@ function DraggableElement({
         <div className="relative inline-block">
           <video
             ref={videoRef}
-            src={!isDemoShare || isDemoVideoArmed ? element.content : undefined}
+            src={!isDemoShare || isDemoVideoReady ? element.content : undefined}
             poster={
               isDemoShare
                 ? demoImageVariant(DEMO_LIGHT_IMAGE_URLS[1], 640, 72)
@@ -3788,9 +3868,8 @@ function DraggableElement({
             onClick={(e) => {
               e.stopPropagation();
               if (isEditing) onSelect();
-              if (isDemoShare && !isDemoVideoArmed) {
-                setIsDemoVideoArmed(true);
-                logDemoDiagnostics("demo video armed");
+              if (isDemoShare && !isDemoVideoReady) {
+                armCurrentDemoVideo(e);
                 return;
               }
               const el = videoRef.current;
@@ -3803,16 +3882,12 @@ function DraggableElement({
               void el.play().catch(() => {});
             }}
           />
-          {isDemoShare && !isDemoVideoArmed && (
+          {isDemoShare && !isDemoVideoReady && (
             <button
               type="button"
-              className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/20 text-xs font-semibold text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isEditing) onSelect();
-                setIsDemoVideoArmed(true);
-                logDemoDiagnostics("demo video armed");
-              }}
+              className="absolute inset-0 z-20 flex items-center justify-center rounded-sm bg-black/20 text-xs font-semibold text-white pointer-events-auto"
+              onPointerDown={armCurrentDemoVideo}
+              onClick={armCurrentDemoVideo}
             >
               Tap to preview
             </button>
