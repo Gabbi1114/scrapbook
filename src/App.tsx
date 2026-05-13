@@ -384,25 +384,25 @@ const MAX_UPLOAD_IMAGE_SIDE_PX = 2200;
 const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2560;
 const DEMO_CDN_IMAGE_MAX_WIDTH_PX = 820;
 const DEMO_CDN_IOS_IMAGE_MAX_WIDTH_PX = 640;
-const DEMO_LIGHT_MUSIC_URL =
-  "https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3";
+const DEMO_LIGHT_MUSIC_URL = "";
 const DEMO_LIGHT_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+// Birthday / celebration themed Unsplash photos for the demo scrapbook.
 const DEMO_LIGHT_IMAGE_URLS = [
-  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
-  "https://images.unsplash.com/photo-1507525428034-b723cf961d3e",
-  "https://images.unsplash.com/photo-1469474968028-56623f02e42e",
-  "https://images.unsplash.com/photo-1488646953014-85cb44e25828",
-  "https://images.unsplash.com/photo-1519681393784-d120267933ba",
-  "https://images.unsplash.com/photo-1527631746610-bca00a040d60",
-  "https://images.unsplash.com/photo-1491553895911-0055eca6402d",
-  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429",
+  "https://images.unsplash.com/photo-1464349153735-7db50ed83c84", // birthday candles
+  "https://images.unsplash.com/photo-1527529482837-4698179dc6ce", // friends celebrating
+  "https://images.unsplash.com/photo-1513151233558-d860c5398176", // colorful balloons
+  "https://images.unsplash.com/photo-1530103862676-de8c9debad1d", // pink birthday cake
+  "https://images.unsplash.com/photo-1602173574767-37ac01994b2a", // flowers close-up
+  "https://images.unsplash.com/photo-1533038590840-1cde6e668a91", // flower bouquet
+  "https://images.unsplash.com/photo-1519741497674-611481863552", // sparklers
+  "https://images.unsplash.com/photo-1558618666-fcd25c85cd64",   // pastel balloons
 ] as const;
 const DEMO_LIGHT_BACKGROUND_URLS = [
-  "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
-  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429",
-  "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
-  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+  "https://images.unsplash.com/photo-1519751138087-5bf79df62d5b", // warm bokeh lights
+  "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46", // pink rose petals
+  "https://images.unsplash.com/photo-1490750967868-88df5691cc1e", // spring blossoms
+  "https://images.unsplash.com/photo-1523438885200-e635ba2c371e", // soft pastel floral
 ] as const;
 
 function isSandboxDemoShareId(id: string | null | undefined): boolean {
