@@ -379,6 +379,8 @@ const SHARE_BOOTSTRAP_FAILSAFE_MS =
   SHARE_FETCH_ATTEMPTS * SHARE_FETCH_TIMEOUT_MS + 12000;
 const MAX_UPLOAD_IMAGE_SIDE_PX = 2200;
 const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2560;
+const DEMO_LIGHT_VIDEO_URL =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 
 function isSandboxDemoShareId(id: string | null | undefined): boolean {
   return id === DEMO_SHARE_ID;
@@ -421,12 +423,22 @@ function upgradeDemoPagesForHd(
   return pages.map((page) => ({
     ...page,
     backgroundImage: upgradeDemoAssetUrl(page.backgroundImage, maxWidth),
-    elements: page.elements.map((element) => ({
-      ...element,
-      content:
-        upgradeDemoAssetUrl(element.content, maxWidth) || element.content,
-      frameImage: upgradeDemoAssetUrl(element.frameImage, maxWidth),
-    })),
+    elements: page.elements.map((element) => {
+      if (element.type === "video") {
+        return {
+          ...element,
+          content: DEMO_LIGHT_VIDEO_URL,
+          width: Math.min(element.width || 300, 260),
+          height: Math.min(element.height || 160, 146),
+        };
+      }
+
+      return {
+        ...element,
+        content: upgradeDemoAssetUrl(element.content, maxWidth) || element.content,
+        frameImage: upgradeDemoAssetUrl(element.frameImage, maxWidth),
+      };
+    }),
   }));
 }
 
