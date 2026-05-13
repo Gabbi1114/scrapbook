@@ -301,6 +301,72 @@ function toFriendlyFinalizeError(rawError: string): string {
 
 const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
 const DEMO_SHARE_ID = "Es8MGMZo5IweOb8a";
+
+// ─── Demo-route helpers ────────────────────────────────────────────────────────
+// All helpers below are ONLY activated when the URL contains the demo share ID.
+// They must never affect the main app or other share links.
+
+/**
+ * FIX-J (demo): Activate in-browser diagnostics by appending &diag to the demo URL.
+ * Logs JS heap every 5 s to console; shows a fixed overlay with layer count.
+ * Guard: only runs on the demo share ID.
+ */
+function activateDemoDiagnosticsIfRequested(): void {
+  if (typeof window === "undefined") return;
+  if (!window.location.search.includes(DEMO_SHARE_ID)) return;
+  if (!new URLSearchParams(window.location.search).has("diag")) return;
+  (window as any).__demoDiag = true;
+  window.setInterval(() => {
+    const mem = (performance as any).memory;
+    console.log(
+      "[demo-diag] mem:",
+      mem
+        ? `${(mem.usedJSHeapSize / 1048576).toFixed(1)}MB / ${(mem.jsHeapSizeLimit / 1048576).toFixed(0)}MB`
+        : "no memory API",
+    );
+  }, 5000);
+}
+
+/**
+ * FIX-C (demo): Strip will-change from all elements that are not actively
+ * animating. Called once after the demo page mounts. Prevents iOS WebKit from
+ * pre-allocating GPU layers for every element on the page.
+ * Guard: only runs on the demo share ID.
+ */
+function stripIdleWillChange(): void {
+  if (typeof document === "undefined") return;
+  if (!window.location.search.includes(DEMO_SHARE_ID)) return;
+  // Give React one frame to finish painting before we audit.
+  requestAnimationFrame(() => {
+    document.querySelectorAll<HTMLElement>("*").forEach((el) => {
+      const wc = el.style.willChange || getComputedStyle(el).willChange;
+      // Keep will-change only on elements that are mid-animation (is-flipping).
+      if (wc && wc !== "auto" && !el.classList.contains("is-flipping")) {
+        el.style.willChange = "auto";
+      }
+    });
+  });
+}
+
+/**
+ * FIX-A/B (demo): Cap the Unsplash image width for the demo to a
+ * device-appropriate value. On iOS we use 900px (≈ iPhone 15 Pro @3x logical
+ * width of 393px × 2 = 786px, rounded up). On desktop we use 1200px.
+ * This is tighter than the existing 1100/1400 split and avoids loading
+ * 2200px-wide bitmaps that exhaust iOS VRAM.
+ */
+function getDemoImageMaxWidth(): number {
+  if (typeof window === "undefined") return 1200;
+  // Use devicePixelRatio-aware cap: logical width × DPR, max 1200 on mobile.
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const logicalW = window.innerWidth || 390;
+  // Each page is ~half the viewport width in the book spread.
+  const pageLogicalW = Math.ceil(logicalW / 2);
+  const dpAware = Math.ceil(pageLogicalW * dpr);
+  return isIosWebkitDevice()
+    ? Math.min(dpAware, 1100)
+    : Math.min(dpAware, 1400);
+}
 const DEMO_EDIT_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
 const LOADING_SCENE_EXIT_MS = 700;
 const LOADING_PROGRESS_SETTLE_MS = 220;
@@ -720,6 +786,22 @@ export default function App() {
     isLoadingSceneVisible,
     isLoadingSceneExiting,
   ]);
+
+  // FIX-C/J (demo): After the loading scene exits, activate demo diagnostics
+  // and strip idle will-change from all elements. Both helpers are no-ops on
+  // non-demo routes (guarded by DEMO_SHARE_ID check inside each function).
+  useEffect(() => {
+    if (!isInitialBootstrapDone) return;
+    // Delay slightly so React has finished painting the book pages.
+    const id = window.setTimeout(
+      () => {
+        activateDemoDiagnosticsIfRequested();
+        stripIdleWillChange();
+      },
+      LOADING_PROGRESS_SETTLE_MS + LOADING_SCENE_EXIT_MS + 100,
+    );
+    return () => window.clearTimeout(id);
+  }, [isInitialBootstrapDone]);
 
   useEffect(() => {
     hasAudioGestureRef.current = hasAudioGesture;
@@ -1172,7 +1254,14 @@ export default function App() {
           if (cancelled || !applyShareBundleRef.current) return;
           if (bundle) {
             const isDemo = isSandboxDemoShareId(sid);
-            const demoAssetMaxWidth = isIosWebkitDevice() ? 1100 : 1400;
+            // FIX-A (demo): Use DPR-aware width cap instead of hardcoded 1100/1400.
+            // getDemoImageMaxWidth() computes: min(pageLogicalWidth × DPR, 1100 on iOS / 1400 on desktop).
+            // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
+            const demoAssetMaxWidth = isDemo
+              ? getDemoImageMaxWidth()
+              : isIosWebkitDevice()
+                ? 1100
+                : 1400;
             const displayPages = isDemo
               ? upgradeDemoPagesForHd(bundle.pages, demoAssetMaxWidth)
               : bundle.pages;
@@ -2781,9 +2870,12 @@ function FlipPage({
 
   const isInteractive = i === currentLeaf || i === currentLeaf - 1;
 
-  // FIX-J: Staging diagnostics — mount memory monitor when ?diag=1
+  // FIX-J (demo): Diagnostics overlay — only on leaf i===0 to avoid creating
+  // and destroying the overlay on every leaf mount/unmount cycle.
+  // Guard: only activates when ?diag is present in the URL.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (i !== 0) return; // Only the first leaf manages the overlay
     if (!new URLSearchParams(window.location.search).has("diag")) return;
     let el = document.getElementById("diag-overlay");
     if (!el) {
@@ -2805,7 +2897,7 @@ function FlipPage({
       window.clearInterval(id);
       diagEl.remove();
     };
-  }, []);
+  }, [i]);
 
   return (
     <>
