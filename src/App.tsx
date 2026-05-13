@@ -636,7 +636,14 @@ function shouldRenderLeaf(
   index: number,
   currentLeaf: number,
   totalLeaves: number,
+  isDemoShare: boolean = false,
 ): boolean {
+  if (isDemoShare) {
+    return (
+      Math.abs(index - currentLeaf) <= 1 ||
+      Math.abs(index - (currentLeaf - 1)) <= 1
+    );
+  }
   if (totalLeaves <= 8) return true;
   if (index === 0 || index === totalLeaves - 1) return true;
   return (
@@ -2425,7 +2432,14 @@ export default function App() {
                         </MotionConfig>
                       ) : (
                         leaves.map((leaf, i) => {
-                          if (!shouldRenderLeaf(i, currentLeaf, totalLeaves)) {
+                          if (
+                            !shouldRenderLeaf(
+                              i,
+                              currentLeaf,
+                              totalLeaves,
+                              isDemoShare,
+                            )
+                          ) {
                             return null;
                           }
                           return (
@@ -3355,7 +3369,7 @@ function PageContent({
 
   return (
     <div
-      className={`w-full h-full relative ${useClassBackground ? page.background : ""} ${page.pattern} transition-all ${isActive && isEditing ? "ring-inset ring-4 ring-rose-400" : ""}`}
+      className={`w-full h-full relative ${isDemoShare ? "demo-page-content" : ""} ${useClassBackground ? page.background : ""} ${page.pattern} transition-all ${isActive && isEditing ? "ring-inset ring-4 ring-rose-400" : ""}`}
       style={pageBackgroundStyle}
       onClick={(e) => {
         if (isEditing) {

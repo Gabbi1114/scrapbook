@@ -114,6 +114,7 @@ export function logDemoDiagnostics(label: string): void {
     label,
     loadedImageCount: loadedImages.length,
     loadedImageMP: Number((imagePixels / 1_000_000).toFixed(2)),
+    renderedLeaves: document.querySelectorAll(".paper-flip-leaf").length,
     activeCanvases: document.querySelectorAll("canvas").length,
     memory,
   });

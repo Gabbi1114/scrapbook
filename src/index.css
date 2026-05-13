@@ -309,6 +309,14 @@ textarea,
   -webkit-transform: translateZ(0);
 }
 
+.demo-route .demo-page-content {
+  contain: layout style paint;
+}
+
+.demo-route .scrapbook-element:not(.demo-promote) {
+  will-change: auto !important;
+}
+
 .demo-route .demo-frosted,
 .demo-route .backdrop-blur-sm,
 .demo-route .backdrop-blur-md,
