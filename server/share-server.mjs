@@ -40,10 +40,15 @@ const hasR2Config =
 const MAX_SHARE_BYTES = 15 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 60;
 const SANDBOX_DEMO_SHARE_ID = "pfM_LkLxbqxN7TUX";
+// Bump this string whenever you change DEMO_BIRTHDAY_PAGES so the server
+// re-seeds the demo on next restart without any manual step.
+const DEMO_DATA_VERSION = "v4-hbd-15pg-2025";
+// CC0 background music — replace with any direct MP3/OGG CDN URL.
+// Free options: https://pixabay.com/music/search/birthday/ (download → copy CDN link)
 const DEMO_LIGHT_MUSIC_URL = "";
 const DEMO_LIGHT_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
-// Birthday / celebration themed Unsplash photos for the demo scrapbook.
+// Birthday / celebration themed Unsplash photos (Unsplash license — free commercial use).
 const DEMO_LIGHT_IMAGE_URLS = [
   "https://images.unsplash.com/photo-1464349153735-7db50ed83c84", // birthday candles
   "https://images.unsplash.com/photo-1527529482837-4698179dc6ce", // friends celebrating
@@ -52,13 +57,228 @@ const DEMO_LIGHT_IMAGE_URLS = [
   "https://images.unsplash.com/photo-1602173574767-37ac01994b2a", // flowers close-up
   "https://images.unsplash.com/photo-1533038590840-1cde6e668a91", // flower bouquet
   "https://images.unsplash.com/photo-1519741497674-611481863552", // sparklers
-  "https://images.unsplash.com/photo-1558618666-fcd25c85cd64",   // pastel balloons
+  "https://images.unsplash.com/photo-1558618666-fcd25c85cd64", // pastel balloons
+  "https://images.unsplash.com/photo-1492684223066-81342ee5ff30", // confetti celebration
+  "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e", // cupcakes with candle
+  "https://images.unsplash.com/photo-1549465220-1a8b9238cd48", // wrapped gift boxes
+  "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3", // champagne toast
+  "https://images.unsplash.com/photo-1530268729831-4b0b9e170218", // birthday party crowd
+  "https://images.unsplash.com/photo-1574371339068-c68e09bfbb25", // rainbow confetti
+  "https://images.unsplash.com/photo-1559181567-c3190ca9d5db", // pink roses bouquet
 ];
 const DEMO_LIGHT_BACKGROUND_URLS = [
   "https://images.unsplash.com/photo-1519751138087-5bf79df62d5b", // warm bokeh lights
   "https://images.unsplash.com/photo-1518568814500-bf0f8d125f46", // pink rose petals
   "https://images.unsplash.com/photo-1490750967868-88df5691cc1e", // spring blossoms
   "https://images.unsplash.com/photo-1523438885200-e635ba2c371e", // soft pastel floral
+  "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5", // purple pink bokeh
+  "https://images.unsplash.com/photo-1517697471339-4aa32003c11a", // soft yellow bokeh
+  "https://images.unsplash.com/photo-1546484396-fb3fc6f95f98", // pastel pink
+  "https://images.unsplash.com/photo-1549490349-8643362247b5", // confetti bokeh
+];
+
+// 15-page "Happy Birthday, My Friend!" scrapbook structure.
+// Images/video/music are placeholder strings — withDemoLightCdnAssets()
+// replaces them with real CDN URLs from the lists above at serve time.
+const DEMO_BIRTHDAY_PAGES = [
+  {
+    id: "cover",
+    background: "bg-rose-100",
+    pattern: "pattern-polka",
+    elements: [
+      { id: "t1a", type: "text", x: 50, y: 120, rotation: -3, content: "Happy Birthday,", fontSize: 48, color: "#e11d48", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t1b", type: "text", x: 65, y: 190, rotation: 2, content: "My Friend! 🎂", fontSize: 46, color: "#e11d48", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t1c", type: "text", x: 80, y: 270, rotation: 0, content: "a little book made just for you", fontSize: 18, color: "#f43f5e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s1a", type: "sticker", x: 580, y: 50, rotation: 20, content: "🎉", fontSize: 72 },
+      { id: "s1b", type: "sticker", x: 620, y: 350, rotation: -10, content: "🎈", fontSize: 60 },
+      { id: "s1c", type: "sticker", x: 40, y: 65, rotation: 15, content: "🌸", fontSize: 56 },
+      { id: "s1d", type: "sticker", x: 660, y: 195, rotation: 0, content: "✨", fontSize: 44 },
+    ],
+  },
+  {
+    id: "page-2",
+    background: "bg-amber-50",
+    pattern: "pattern-grid",
+    elements: [
+      { id: "t2a", type: "text", x: 50, y: 75, rotation: 2, content: "This book is for you ✨", fontSize: 34, color: "#d97706", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t2b", type: "text", x: 55, y: 155, rotation: -1, content: "You make every day brighter", fontSize: 18, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t2c", type: "text", x: 55, y: 188, rotation: 0, content: "and every moment more special.", fontSize: 18, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "i2a", type: "image", x: 310, y: 88, rotation: -4, content: "https://placeholder.img", width: 250, height: 310 },
+      { id: "s2a", type: "sticker", x: 620, y: 430, rotation: 12, content: "💛", fontSize: 52 },
+      { id: "s2b", type: "sticker", x: 40, y: 400, rotation: -8, content: "🌻", fontSize: 52 },
+    ],
+  },
+  {
+    id: "page-3",
+    background: "bg-violet-50",
+    pattern: "pattern-polka",
+    elements: [
+      { id: "t3a", type: "text", x: 50, y: 78, rotation: -2, content: "You Are", fontSize: 44, color: "#7c3aed", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t3b", type: "text", x: 50, y: 138, rotation: 1, content: "Amazing ✨", fontSize: 44, color: "#7c3aed", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "i3a", type: "image", x: 310, y: 72, rotation: 4, content: "https://placeholder.img", width: 250, height: 310 },
+      { id: "t3c", type: "text", x: 50, y: 218, rotation: 0, content: "“the world is better with you in it”", fontSize: 15, color: "#6d28d9", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s3a", type: "sticker", x: 620, y: 415, rotation: 15, content: "⭐", fontSize: 52 },
+      { id: "s3b", type: "sticker", x: 40, y: 398, rotation: -10, content: "💜", fontSize: 44 },
+    ],
+  },
+  {
+    id: "page-4",
+    background: "bg-sky-50",
+    pattern: "pattern-lines",
+    elements: [
+      { id: "t4a", type: "text", x: 40, y: 52, rotation: -1, content: "Our Favorite", fontSize: 38, color: "#0369a1", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t4b", type: "text", x: 40, y: 106, rotation: 1, content: "Memories 📸", fontSize: 38, color: "#0369a1", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "i4a", type: "image", x: 40, y: 182, rotation: -5, content: "https://placeholder.img", width: 200, height: 250 },
+      { id: "i4b", type: "image", x: 430, y: 108, rotation: 4, content: "https://placeholder.img", width: 200, height: 250 },
+      { id: "t4c", type: "text", x: 58, y: 450, rotation: 2, content: "remember this? 😊", fontSize: 14, color: "#0c4a6e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "t4d", type: "text", x: 445, y: 372, rotation: -2, content: "& this one too! 💙", fontSize: 14, color: "#0c4a6e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+    ],
+  },
+  {
+    id: "page-5",
+    background: "bg-yellow-50",
+    pattern: "pattern-grid",
+    elements: [
+      { id: "t5a", type: "text", x: 40, y: 62, rotation: 2, content: "Laughs We've Had 😂", fontSize: 32, color: "#b45309", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "i5a", type: "image", x: 300, y: 92, rotation: -3, content: "https://placeholder.img", width: 260, height: 330 },
+      { id: "t5b", type: "text", x: 45, y: 165, rotation: -1, content: "the funniest moments", fontSize: 16, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "t5c", type: "text", x: 45, y: 195, rotation: 1, content: "with my favorite person 💕", fontSize: 16, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s5a", type: "sticker", x: 48, y: 345, rotation: -12, content: "🥹", fontSize: 52 },
+      { id: "s5b", type: "sticker", x: 48, y: 428, rotation: 8, content: "😂", fontSize: 48 },
+    ],
+  },
+  {
+    id: "page-6",
+    background: "bg-emerald-50",
+    pattern: "pattern-lines",
+    elements: [
+      { id: "t6a", type: "text", x: 40, y: 52, rotation: -2, content: "Adventures Together", fontSize: 34, color: "#065f46", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "i6a", type: "image", x: 40, y: 128, rotation: -4, content: "https://placeholder.img", width: 200, height: 250 },
+      { id: "i6b", type: "image", x: 430, y: 158, rotation: 5, content: "https://placeholder.img", width: 200, height: 240 },
+      { id: "t6b", type: "text", x: 40, y: 392, rotation: 1, content: "every trip is better with you!", fontSize: 14, color: "#064e3b", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s6a", type: "sticker", x: 640, y: 52, rotation: 15, content: "✈️", fontSize: 52 },
+      { id: "s6b", type: "sticker", x: 320, y: 428, rotation: -5, content: "🗺️", fontSize: 48 },
+    ],
+  },
+  {
+    id: "page-7",
+    background: "bg-pink-50",
+    pattern: "pattern-polka",
+    elements: [
+      { id: "t7a", type: "text", x: 45, y: 58, rotation: -3, content: "Today is YOUR day! 🎂", fontSize: 32, color: "#be185d", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "i7a", type: "image", x: 48, y: 138, rotation: -4, content: "https://placeholder.img", width: 220, height: 280 },
+      { id: "t7b", type: "text", x: 345, y: 158, rotation: 1, content: "celebrating another year", fontSize: 16, color: "#9d174d", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "t7c", type: "text", x: 345, y: 190, rotation: -1, content: "of being absolutely wonderful", fontSize: 16, color: "#9d174d", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s7a", type: "sticker", x: 345, y: 278, rotation: 10, content: "🎂", fontSize: 64 },
+      { id: "s7b", type: "sticker", x: 540, y: 378, rotation: -15, content: "🎁", fontSize: 52 },
+    ],
+  },
+  {
+    id: "page-8",
+    background: "bg-fuchsia-50",
+    pattern: "pattern-grid",
+    elements: [
+      { id: "t8a", type: "text", x: 50, y: 58, rotation: 1, content: "A Little Message 🎬", fontSize: 34, color: "#86198f", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "v8a", type: "video", x: 178, y: 138, rotation: -2, content: "https://placeholder.vid", width: 240, height: 136 },
+      { id: "t8b", type: "text", x: 198, y: 308, rotation: 0, content: "press play! 🎥", fontSize: 16, color: "#701a75", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s8a", type: "sticker", x: 590, y: 58, rotation: 20, content: "🎬", fontSize: 52 },
+      { id: "s8b", type: "sticker", x: 48, y: 378, rotation: -8, content: "💫", fontSize: 48 },
+    ],
+  },
+  {
+    id: "page-9",
+    background: "bg-rose-50",
+    pattern: "pattern-polka",
+    elements: [
+      { id: "t9a", type: "text", x: 45, y: 48, rotation: -2, content: "Polaroid Moments 📸", fontSize: 34, color: "#be185d", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "s9p1", type: "sticker", x: 48, y: 128, rotation: -6, content: "__POLAROID__", width: 200, height: 260, frameImage: "https://placeholder.img" },
+      { id: "s9p2", type: "sticker", x: 430, y: 108, rotation: 5, content: "__POLAROID__", width: 200, height: 260, frameImage: "https://placeholder.img" },
+      { id: "s9a", type: "sticker", x: 328, y: 418, rotation: 0, content: "📸", fontSize: 52 },
+    ],
+  },
+  {
+    id: "page-10",
+    background: "bg-amber-50",
+    pattern: "pattern-lines",
+    elements: [
+      { id: "t10a", type: "text", x: 40, y: 52, rotation: -1, content: "Things I Love About You", fontSize: 30, color: "#b45309", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t10b", type: "text", x: 55, y: 135, rotation: 1, content: "1. Your laugh 😄", fontSize: 18, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t10c", type: "text", x: 55, y: 175, rotation: -1, content: "2. Your kindness 🤍", fontSize: 18, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t10d", type: "text", x: 55, y: 215, rotation: 0, content: "3. Your energy ⚡", fontSize: 18, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t10e", type: "text", x: 55, y: 255, rotation: 1, content: "4. Your smile 😊", fontSize: 18, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t10f", type: "text", x: 55, y: 295, rotation: -1, content: "5. Everything about you! 💛", fontSize: 18, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "i10a", type: "image", x: 428, y: 128, rotation: 4, content: "https://placeholder.img", width: 230, height: 290 },
+      { id: "s10a", type: "sticker", x: 648, y: 428, rotation: 15, content: "❤️", fontSize: 44 },
+    ],
+  },
+  {
+    id: "page-11",
+    background: "bg-sky-50",
+    pattern: "pattern-grid",
+    elements: [
+      { id: "t11a", type: "text", x: 40, y: 58, rotation: -2, content: "Places We'll Go 🌍", fontSize: 34, color: "#0369a1", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t11b", type: "text", x: 40, y: 122, rotation: 1, content: "“oh the places you'll go!”", fontSize: 16, color: "#0c4a6e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "i11a", type: "image", x: 40, y: 172, rotation: -3, content: "https://placeholder.img", width: 290, height: 280 },
+      { id: "t11c", type: "text", x: 380, y: 348, rotation: -2, content: "the world is waiting for us 🌟", fontSize: 15, color: "#075985", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s11a", type: "sticker", x: 380, y: 118, rotation: 15, content: "✈️", fontSize: 56 },
+      { id: "s11b", type: "sticker", x: 618, y: 428, rotation: -10, content: "🌟", fontSize: 44 },
+    ],
+  },
+  {
+    id: "page-12",
+    background: "bg-violet-50",
+    pattern: "pattern-polka",
+    elements: [
+      { id: "t12a", type: "text", x: 50, y: 62, rotation: -3, content: "Wishing You...", fontSize: 40, color: "#7c3aed", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t12b", type: "text", x: 55, y: 152, rotation: 1, content: "all the happiness in the world 🌈", fontSize: 16, color: "#6d28d9", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t12c", type: "text", x: 55, y: 190, rotation: -1, content: "every dream you've ever dreamed ⭐", fontSize: 16, color: "#6d28d9", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t12d", type: "text", x: 55, y: 228, rotation: 0, content: "adventures beyond imagination ✨", fontSize: 16, color: "#6d28d9", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t12e", type: "text", x: 55, y: 266, rotation: 1, content: "the best year yet! 🎉", fontSize: 16, color: "#6d28d9", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "i12a", type: "image", x: 398, y: 98, rotation: 4, content: "https://placeholder.img", width: 235, height: 300 },
+      { id: "s12a", type: "sticker", x: 45, y: 348, rotation: -10, content: "✨", fontSize: 52 },
+      { id: "s12b", type: "sticker", x: 618, y: 428, rotation: 10, content: "💜", fontSize: 44 },
+    ],
+  },
+  {
+    id: "page-13",
+    background: "bg-rose-50",
+    pattern: "pattern-grid",
+    elements: [
+      { id: "t13a", type: "text", x: 40, y: 52, rotation: 2, content: "Year in Highlights ⭐", fontSize: 34, color: "#e11d48", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "i13a", type: "image", x: 40, y: 122, rotation: -5, content: "https://placeholder.img", width: 200, height: 250 },
+      { id: "i13b", type: "image", x: 430, y: 98, rotation: 4, content: "https://placeholder.img", width: 200, height: 250 },
+      { id: "t13b", type: "text", x: 55, y: 388, rotation: 2, content: "our adventures 🌟", fontSize: 14, color: "#9f1239", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "t13c", type: "text", x: 445, y: 362, rotation: -2, content: "best moments ✨", fontSize: 14, color: "#9f1239", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s13a", type: "sticker", x: 318, y: 428, rotation: 0, content: "🗓️", fontSize: 44 },
+    ],
+  },
+  {
+    id: "page-14",
+    background: "bg-amber-50",
+    pattern: "pattern-polka",
+    elements: [
+      { id: "t14a", type: "text", x: 40, y: 58, rotation: -2, content: "More Memories 💛", fontSize: 36, color: "#d97706", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "i14a", type: "image", x: 98, y: 118, rotation: -3, content: "https://placeholder.img", width: 380, height: 320 },
+      { id: "s14a", type: "sticker", x: 618, y: 58, rotation: 20, content: "💛", fontSize: 52 },
+      { id: "s14b", type: "sticker", x: 48, y: 458, rotation: -8, content: "🌻", fontSize: 44 },
+      { id: "t14b", type: "text", x: 128, y: 458, rotation: 1, content: "every photo tells a story", fontSize: 14, color: "#92400e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+    ],
+  },
+  {
+    id: "back-cover",
+    background: "bg-rose-100",
+    pattern: "pattern-polka",
+    elements: [
+      { id: "t15a", type: "text", x: 78, y: 152, rotation: -3, content: "Happy Birthday! 🎉", fontSize: 48, color: "#e11d48", fontFamily: "var(--font-handwriting)", textEffect: "none", fontWeight: "bold" },
+      { id: "t15b", type: "text", x: 105, y: 242, rotation: 0, content: "with all my love 💕", fontSize: 24, color: "#f43f5e", fontFamily: "var(--font-handwriting)", textEffect: "none" },
+      { id: "t15c", type: "text", x: 90, y: 308, rotation: 2, content: "may all your wishes come true ✨", fontSize: 17, color: "#f43f5e", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "t15d", type: "text", x: 120, y: 428, rotation: 1, content: "← flip back to the beginning", fontSize: 13, color: "#9f1239", fontFamily: "var(--font-handwriting)", textEffect: "none", fontStyle: "italic" },
+      { id: "s15a", type: "sticker", x: 578, y: 58, rotation: 25, content: "🎉", fontSize: 72 },
+      { id: "s15b", type: "sticker", x: 568, y: 288, rotation: -15, content: "🎂", fontSize: 52 },
+      { id: "s15c", type: "sticker", x: 618, y: 428, rotation: 10, content: "🎈", fontSize: 44 },
+      { id: "s15d", type: "sticker", x: 43, y: 88, rotation: 10, content: "✨", fontSize: 52 },
+    ],
+  },
 ];
 const execFileAsync = promisify(execFile);
 const upload = multer({
@@ -848,8 +1068,32 @@ app.get("/api/media/:key(*)", async (req, res) => {
   }
 });
 
+// Seed the demo share on startup whenever DEMO_DATA_VERSION changes.
+// Writes directly to the local file and R2, bypassing the PUT endpoint
+// (which intentionally blocks saves to the demo ID from the browser).
+async function bootstrapDemoShare() {
+  try {
+    const existing = await loadShareOrNull(SANDBOX_DEMO_SHARE_ID);
+    if (existing?.data?.demoVersion === DEMO_DATA_VERSION) {
+      console.log(`[demo] share ${SANDBOX_DEMO_SHARE_ID} is current (${DEMO_DATA_VERSION})`);
+      return;
+    }
+    const payload = {
+      v: 1,
+      pages: DEMO_BIRTHDAY_PAGES,
+      mediaBytes: 0,
+      demoVersion: DEMO_DATA_VERSION,
+    };
+    await persistShare(SANDBOX_DEMO_SHARE_ID, payload);
+    console.log(`[demo] seeded ${SANDBOX_DEMO_SHARE_ID} — ${DEMO_BIRTHDAY_PAGES.length} pages (${DEMO_DATA_VERSION})`);
+  } catch (e) {
+    console.error("[demo] bootstrap failed:", e);
+  }
+}
+
 app.listen(PORT, () => {
   console.log(
     `[scrapbook share] http://localhost:${PORT}  (POST /api/share, GET /api/share/:id)`,
   );
+  bootstrapDemoShare();
 });
