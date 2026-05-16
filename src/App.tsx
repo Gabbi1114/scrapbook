@@ -1051,6 +1051,22 @@ function demoCdnBackgroundAt(index: number, maxWidth: number): string {
   return buildDemoCdnImageUrl(url, maxWidth);
 }
 
+const DEMO_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 420'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%23fff8ed'/%3E%3Cstop offset='1' stop-color='%23efd9ba'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='320' height='420' fill='url(%23g)'/%3E%3Cpath d='M58 294c40-58 66-82 94-55 17 17 32 34 54 13 20-19 38-8 57 42' fill='none' stroke='%23c79a72' stroke-width='14' stroke-linecap='round'/%3E%3Ccircle cx='220' cy='136' r='34' fill='%23e9bd83'/%3E%3C/svg%3E";
+
+function demoFallbackImageFor(src: string, maxWidth: number): string {
+  if (!src) return DEMO_IMAGE_PLACEHOLDER;
+  const hash = [...src].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const fallbackBase =
+    DEMO_LIGHT_IMAGE_URLS[(Math.abs(hash) + 7) % DEMO_LIGHT_IMAGE_URLS.length];
+  const fallback = demoImageVariant(
+    fallbackBase,
+    Math.min(Math.max(maxWidth, 640), 960),
+    74,
+  );
+  return fallback === src ? DEMO_IMAGE_PLACEHOLDER : fallback;
+}
+
 function upgradeDemoPagesForHd(
   pages: PageData[],
   maxWidth: number = 1400,
@@ -1079,6 +1095,13 @@ function upgradeDemoPagesForHd(
           frameImage: element.frameImage
             ? demoCdnImageAt(assetIndex + 2, maxWidth)
             : element.frameImage,
+        };
+      }
+
+      if (element.type === "sticker" && element.content === "__POLAROID__") {
+        return {
+          ...element,
+          frameImage: demoCdnImageAt(assetIndex + 2, maxWidth),
         };
       }
 
@@ -3911,10 +3934,22 @@ function DemoResponsiveImage({
   maxWidth?: number;
   draggable?: boolean;
 }) {
+  const [fallbackSrc, setFallbackSrc] = useState<string | null>(null);
+  useEffect(() => {
+    setFallbackSrc(null);
+  }, [src]);
+  const displaySrc = fallbackSrc || src;
+  const handleImageError = useCallback(() => {
+    const next = fallbackSrc
+      ? DEMO_IMAGE_PLACEHOLDER
+      : demoFallbackImageFor(src, maxWidth);
+    setFallbackSrc(next);
+  }, [fallbackSrc, maxWidth, src]);
+
   if (!isDemoShare) {
     return (
       <img
-        src={src}
+        src={displaySrc}
         alt={alt}
         loading="lazy"
         decoding="async"
@@ -3922,10 +3957,11 @@ function DemoResponsiveImage({
         className={className}
         style={style}
         draggable={draggable}
+        onError={handleImageError}
       />
     );
   }
-  const attrs = demoResponsiveImageAttrs(src, hdReady, maxWidth);
+  const attrs = demoResponsiveImageAttrs(displaySrc, hdReady, maxWidth);
   return (
     <picture className={pictureClassName}>
       {attrs.srcSet && <source srcSet={attrs.srcSet} sizes={sizes} />}
@@ -3939,6 +3975,7 @@ function DemoResponsiveImage({
         className={className}
         style={style}
         draggable={draggable}
+        onError={handleImageError}
       />
     </picture>
   );

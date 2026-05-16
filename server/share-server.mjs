@@ -382,6 +382,15 @@ function withDemoLightCdnAssets(data) {
             }
             if (
               element?.type === "sticker" &&
+              element.content === "__POLAROID__"
+            ) {
+              return {
+                ...element,
+                frameImage: demoCdnImageAt(assetIndex + 2),
+              };
+            }
+            if (
+              element?.type === "sticker" &&
               /^https?:\/\//i.test(element.content || "")
             ) {
               return {
