@@ -58,8 +58,13 @@ import {
   releaseCanvasResource,
   unpromoteDemoElement,
 } from "./demoFixes";
+import {
+  LANGUAGE_STORAGE_KEY,
+  normalizeLanguage,
+  type Language,
+} from "./i18n";
 
-// ─── z-index layering constants ───────────────────────────────────────────────
+// â”€â”€â”€ z-index layering constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Z_STEP = 1;
 const Z_JUMP = 10;
 const Z_MIN = 1;
@@ -185,7 +190,7 @@ function defaultEditorLeftPx(): number {
 function parseYouTubeVideoId(url: string): string | null {
   const raw = url.trim();
   if (!raw) return null;
-  // Pasted ID only (no https://) — common when copying from the address bar on mobile
+  // Pasted ID only (no https://) â€” common when copying from the address bar on mobile
   if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) return raw;
 
   let href = raw;
@@ -230,10 +235,14 @@ function parseYouTubeVideoId(url: string): string | null {
 function toFriendlyUploadError(
   rawError: string,
   kind: "image" | "video",
+  language: Language = "mn",
 ): string {
   const t = (rawError || "").toLowerCase();
+  const en = language === "en";
+
 
   if (t.includes("1 minute")) {
+    if (en) return "This video is longer than 1 minute. Please choose a shorter video.";
     return "Энэ видео 1 минутаас урт байна. Богино видео сонгоно уу.";
   }
   if (
@@ -241,24 +250,40 @@ function toFriendlyUploadError(
     t.includes("15mb") ||
     t.includes("too large")
   ) {
-    return "Файл хэт том эсвэл энэ линкийн багтаамж дүүрсэн байна. Жижиг хэмжээтэй зураг/видео сонгоно уу.";
+    if (en) return "The file is too large, or this link's storage is full. Please choose a smaller photo or video.";
+    return "Файл хэт том эсвэл энэ линкний багтаамж дүүрсэн байна. Жижиг хэмжээтэй зураг/видео сонгоно уу.";
   }
   if (t.includes("only image/video")) {
+    if (en) {
+      return kind === "image"
+        ? "This image type is not supported. Please choose a JPG, PNG, WebP, or GIF file."
+        : "This video type is not supported. Please choose an MP4, WebM, or MOV file.";
+    }
     return kind === "image"
       ? "Энэ төрлийн зураг дэмжигдэхгүй байна. JPG, PNG, WebP эсвэл GIF файл сонгоно уу."
       : "Энэ төрлийн видео дэмжигдэхгүй байна. MP4, WebM эсвэл MOV файл сонгоно уу.";
   }
   if (t.includes("edit window expired")) {
+    if (en) return "This link's editing window has expired, so new files cannot be added.";
     return "Энэ линкний засварлах хугацаа дууссан тул шинэ файл нэмэх боломжгүй.";
   }
   if (t.includes("share not found") || t.includes("not found")) {
+    if (en) return "Link not found. Please check the link and try again.";
     return "Линк олдсонгүй. Линк зөв эсэхийг шалгаад дахин оролдоно уу.";
   }
   if (t.includes("file is required")) {
+    if (en) return "No file was selected. Please choose a file and try again.";
     return "Файл сонгогдоогүй байна. Дахин сонгоод оролдоно уу.";
   }
   if (t.includes("r2 not configured") || t.includes("service unavailable")) {
+    if (en) return "File uploads are not available right now. Please wait a moment and try again.";
     return "Одоогоор файл байршуулах боломжгүй байна. Түр хүлээгээд дахин оролдоно уу.";
+  }
+
+  if (en) {
+    return kind === "image"
+      ? "This image could not be uploaded. Please choose another image and try again."
+      : "This video could not be uploaded. Please choose another video and try again.";
   }
 
   return kind === "image"
@@ -266,17 +291,19 @@ function toFriendlyUploadError(
     : "Энэ видеог оруулах боломжгүй байна. Өөр видео сонгоод дахин оролдоно уу.";
 }
 
-function toFriendlyFinalizeError(rawError: string): string {
+function toFriendlyFinalizeError(rawError: string, language: Language = "mn"): string {
   const t = (rawError || "").toLowerCase();
   if (t.includes("not found")) {
-    return "Линк олдсонгүй. Хуудсаа сэргээж дахин оролдоно уу.";
+    if (language === "en") return "Link not found. Refresh the page and try again.";
+    return "Линк олдсонгүй. Хуудсаа сэргээгээд дахин оролдоно уу.";
   }
+  if (language === "en") return "Something went wrong while finalizing edits. Please try again.";
   return "Засварыг дуусгах үед алдаа гарлаа. Дахин оролдоно уу.";
 }
 
 const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
 
-// ─── Demo-route helpers ────────────────────────────────────────────────────────
+// â”€â”€â”€ Demo-route helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // All helpers below are ONLY activated when the URL contains the demo share ID.
 // They must never affect the main app or other share links.
 
@@ -316,14 +343,14 @@ function stripIdleWillChange(): void {
 
 /**
  * FIX-A/B (demo): Cap the Unsplash image width for the demo to a
- * device-appropriate value. On iOS we use 900px (≈ iPhone 15 Pro @3x logical
- * width of 393px × 2 = 786px, rounded up). On desktop we use 1200px.
+ * device-appropriate value. On iOS we use 900px (â‰ˆ iPhone 15 Pro @3x logical
+ * width of 393px Ã— 2 = 786px, rounded up). On desktop we use 1200px.
  * This is tighter than the existing 1100/1400 split and avoids loading
  * 2200px-wide bitmaps that exhaust iOS VRAM.
  */
 function getDemoImageMaxWidth(): number {
   if (typeof window === "undefined") return 1200;
-  // Use devicePixelRatio-aware cap: logical width × DPR, max 1200 on mobile.
+  // Use devicePixelRatio-aware cap: logical width Ã— DPR, max 1200 on mobile.
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   const logicalW = window.innerWidth || 390;
   // Each page is ~half the viewport width in the book spread.
@@ -350,7 +377,7 @@ const DEMO_CDN_IOS_IMAGE_MAX_WIDTH_PX = 640;
 // Public-domain birthday music for the fixed demo scrapbook.
 const DEMO_LIGHT_MUSIC_URL =
   "https://upload.wikimedia.org/wikipedia/commons/0/02/Happy_Birthday_to_You.ogg";
-// CC0 music — set DEMO_LIGHT_MUSIC_URL in server/share-server.mjs to add a track.
+// CC0 music â€” set DEMO_LIGHT_MUSIC_URL in server/share-server.mjs to add a track.
 const DEMO_LIGHT_VIDEO_URL =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 // Birthday / celebration themed Unsplash photos (must match server/share-server.mjs).
@@ -1328,6 +1355,21 @@ function LoadingScene({
 }
 
 export default function App() {
+  const [uiLanguage, setUiLanguage] = useState<Language>(() => {
+    if (typeof window === "undefined") return "mn";
+    return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
+  });
+  const uiEnglish = uiLanguage === "en";
+  const ui = useCallback(
+    (mn: string, en: string) => (uiEnglish ? en : mn),
+    [uiEnglish],
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, uiLanguage);
+    document.documentElement.lang = uiLanguage;
+  }, [uiLanguage]);
+
   const [isInitialBootstrapDone, setIsInitialBootstrapDone] = useState(false);
   const [isWindowLoaded, setIsWindowLoaded] = useState(
     typeof document !== "undefined" && document.readyState !== "loading",
@@ -1376,7 +1418,7 @@ export default function App() {
   const [shareStorageLimitBytes, setShareStorageLimitBytes] = useState(
     SHARE_STORAGE_LIMIT_BYTES,
   );
-  /** Server `?share=` only: ISO time after which “Make my own copy” is hidden. */
+  /** Server `?share=` only: ISO time after which â€œMake my own copyâ€ is hidden. */
   const [shareEditUntilIso, setShareEditUntilIso] = useState<string | null>(
     null,
   );
@@ -1718,7 +1760,7 @@ export default function App() {
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      // 2-finger pinch is handled by the stage's own listener → don't block it here.
+      // 2-finger pinch is handled by the stage's own listener â†’ don't block it here.
       if (e.touches.length > 1) return;
       // When user has zoomed in via in-app zoom, allow 1-finger pan.
       if (userZoomRef.current > 1.01) return;
@@ -1840,7 +1882,7 @@ export default function App() {
       if (e.touches.length === 1) {
         const now = Date.now();
         if (now - lastTapTimeRef.current < 300) {
-          // double-tap → reset zoom and pan
+          // double-tap â†’ reset zoom and pan
           setUserZoom(1);
           userZoomRef.current = 1;
           setPanOffset({ x: 0, y: 0 });
@@ -1891,7 +1933,7 @@ export default function App() {
       if (e.touches.length === 0) {
         panStartTouchRef.current = null;
       } else if (e.touches.length === 1) {
-        // Finger count dropped from 2 → 1, restart pan tracking
+        // Finger count dropped from 2 â†’ 1, restart pan tracking
         panStartTouchRef.current = {
           x: e.touches[0].clientX,
           y: e.touches[0].clientY,
@@ -1910,7 +1952,7 @@ export default function App() {
     };
   }, []);
 
-  /** Uniform scale so the fixed 800×600 stage matches preview/edit on every screen size. */
+  /** Uniform scale so the fixed 800Ã—600 stage matches preview/edit on every screen size. */
   useLayoutEffect(() => {
     const el = stageViewportRef.current;
     if (!el) return;
@@ -2013,8 +2055,11 @@ export default function App() {
         if (sid) {
           setShareHint(
             isSandboxDemoShareId(sid)
-              ? "Loading demo scrapbook..."
-              : "Линкийн өгөгдлийг ачаалж байна...",
+              ? ui("Demo scrapbook ачаалж байна...", "Loading demo scrapbook...")
+              : ui(
+                  "Линкний өгөгдлийг ачаалж байна...",
+                  "Loading link data...",
+                ),
           );
           const bundle = await fetchSharedBundleWithAttempts(
             sid,
@@ -2025,7 +2070,7 @@ export default function App() {
           if (bundle) {
             const isDemo = isSandboxDemoShareId(sid);
             // FIX-A (demo): Use DPR-aware width cap instead of hardcoded 1100/1400.
-            // getDemoImageMaxWidth() computes: min(pageLogicalWidth × DPR, 1100 on iOS / 1400 on desktop).
+            // getDemoImageMaxWidth() computes: min(pageLogicalWidth Ã— DPR, 1100 on iOS / 1400 on desktop).
             // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
             const demoAssetMaxWidth = isDemo
               ? getDemoImageMaxWidth()
@@ -2140,15 +2185,26 @@ export default function App() {
     if (resolved.kind === "hash" || resolved.kind === "server") {
       try {
         await navigator.clipboard.writeText(resolved.url);
-        setShareHint("Линк хууллаа — мессеж эсвэл и-мэйлээр явуулаарай.");
+        setShareHint(
+          ui(
+            "Линк хууллаа. Мессеж эсвэл и-мэйлээр явуулаарай.",
+            "Link copied. Send it by message or email.",
+          ),
+        );
         window.setTimeout(() => setShareHint(null), 5000);
       } catch {
-        window.prompt("Энэ линкийг хуулна уу:", resolved.url);
+        window.prompt(
+          ui("Энэ линкийг хуулна уу:", "Copy this link:"),
+          resolved.url,
+        );
       }
       return;
     }
     window.alert(
-      "Хуваалцах линк үүсгэж чадсангүй. Хэт олон том зурагтай бол цөөн эсвэл жижиг зураг ашиглаад, интернетээ шалгаад дахин оролдоно уу. Энэ алдаа үргэлжилбэл линк үүсгэх үйлчилгээ идэвхжээгүй байж магадгүй.",
+      ui(
+        "Хуваалцах линк үүсгэж чадсангүй. Хэт олон том зурагтай бол цөөн эсвэл жижиг зураг ашиглаад, интернетээ шалгаад дахин оролдоно уу. Энэ алдаа үргэлжилбэл линк үүсгэх үйлчилгээ идэвхжээгүй байж магадгүй.",
+        "Could not create a share link. If this scrapbook has many large photos, use fewer or smaller images, check your internet connection, and try again. If this keeps happening, link creation may not be enabled.",
+      ),
     );
   };
 
@@ -2158,7 +2214,10 @@ export default function App() {
       setIsEditing(false);
       setShowFinalizePrompt(false);
       setShareHint(
+      ui(
+        "Демо горим: таны өөрчлөлт энэ нийтийн линк дээр хадгалагдахгүй.",
         "Demo mode: your changes are not saved to this public link.",
+      ),
       );
       window.setTimeout(() => setShareHint(null), 2400);
       return;
@@ -2167,13 +2226,18 @@ export default function App() {
     const r = await finalizeSharedEditingById(currentShareId);
     setIsFinalizing(false);
     if (r.ok === false) {
-      window.alert(toFriendlyFinalizeError(r.error));
+      window.alert(toFriendlyFinalizeError(r.error, uiLanguage));
       return;
     }
     setShareEditUntilIso(r.editUntil);
     setIsEditing(false);
     setShowFinalizePrompt(false);
-    setShareHint("Засварыг дуусгалаа. Одоо энэ линк зөвхөн харах горимтой.");
+    setShareHint(
+      ui(
+        "Засварыг дуусгалаа. Одоо энэ линк зөвхөн харах горимтой.",
+        "Editing is finished. This link is now view-only.",
+      ),
+    );
     window.setTimeout(() => setShareHint(null), 2200);
   };
 
@@ -2182,7 +2246,10 @@ export default function App() {
     if (sharedViewMode && !canEditSharedLink) return;
     if (isDemoShare) {
       setShareHint(
-        "Demo mode: music changes stay only in this browser session.",
+        ui(
+          "Демо горим: хөгжмийн өөрчлөлт зөвхөн энэ браузер дээр үлдэнэ.",
+          "Demo mode: music changes stay only in this browser session.",
+        ),
       );
       window.setTimeout(() => setShareHint(null), 1800);
       return;
@@ -2199,10 +2266,15 @@ export default function App() {
     );
     if (r.ok === false && r.error === "aborted") return;
     if (!r.ok) {
-      setShareHint("Хөгжмийн линк хадгалж чадсангүй. Дахин оролдоно уу.");
+      setShareHint(
+        ui(
+          "Хөгжмийн линк хадгалж чадсангүй. Дахин оролдоно уу.",
+          "Could not save the music link. Please try again.",
+        ),
+      );
       return;
     }
-    setShareHint("Хөгжмийн линк хадгалагдлаа.");
+    setShareHint(ui("Хөгжмийн линк хадгалагдлаа.", "Music link saved."));
     if (typeof r.bytesUsed === "number") {
       setShareStorageUsedBytes(r.bytesUsed);
     }
@@ -2226,7 +2298,7 @@ export default function App() {
       }
       return;
     }
-    setStudioAuthError("Нууц үг буруу байна.");
+    setStudioAuthError(ui("Нууц үг буруу байна.", "Incorrect password."));
   };
 
   useEffect(() => {
@@ -2247,7 +2319,10 @@ export default function App() {
       if (r.ok === false && r.error === "aborted") return;
       if (!r.ok) {
         setShareHint(
-          "Энэ линк дээрх өөрчлөлтийг хадгалж чадсангүй. Хуудсаа сэргээгээд дахин оролдоно уу.",
+          ui(
+            "Энэ линк дээрх өөрчлөлтийг хадгалж чадсангүй. Хуудсаа сэргээгээд дахин оролдоно уу.",
+            "Could not save changes to this link. Refresh the page and try again.",
+          ),
         );
         return;
       }
@@ -2257,7 +2332,7 @@ export default function App() {
       if (typeof r.bytesLimit === "number") {
         setShareStorageLimitBytes(r.bytesLimit);
       }
-      setShareHint("Өөрчлөлт хадгалагдлаа.");
+      setShareHint(ui("Өөрчлөлт хадгалагдлаа.", "Changes saved."));
       window.setTimeout(() => setShareHint(null), 1200);
     }, 700);
     return () => {
@@ -2440,17 +2515,19 @@ export default function App() {
   const removePage = (pageId: string) => {
     if (pages.length <= 2) {
       window.alert(
-        isDemoShare
-          ? "The book needs at least 2 pages."
-          : "Номонд хамгийн багадаа 2 хуудас үлдэх ёстой.",
+        ui(
+          "Номонд хамгийн багадаа 2 хуудас үлдэх ёстой.",
+          "The book needs at least 2 pages.",
+        ),
       );
       return;
     }
     if (
       !window.confirm(
-        isDemoShare
-          ? "Delete this page? You can restore it with Undo."
-          : "Энэ хуудсыг устгах уу? Дараа нь Буцаах товчоор сэргээж болно.",
+        ui(
+          "Энэ хуудсыг устгах уу? Дараа нь Буцаах товчоор сэргээж болно.",
+          "Delete this page? You can restore it with Undo.",
+        ),
       )
     ) {
       return;
@@ -2491,19 +2568,28 @@ export default function App() {
     file: File,
   ): Promise<string | null> => {
     if (!file.type.startsWith("image/")) {
-      window.alert("Please choose an image file.");
+      window.alert(ui("Зураг файл сонгоно уу.", "Please choose an image file."));
       return null;
     }
     if (!currentShareId) {
       window.alert(
-        "Create or open a share link first. Then the image can be uploaded and saved.",
+        ui(
+          "Эхлээд хуваалцах линк үүсгэх/нээх хэрэгтэй. Дараа нь зургаа байршуулна уу.",
+          "Create or open a share link first. Then the image can be uploaded and saved.",
+        ),
       );
       return null;
     }
     setShareHint(
       isDemoShare
-        ? "Demo mode: previewing background locally..."
-        : "Background image is uploading...",
+        ? ui(
+            "Демо горим: дэвсгэрийг зөвхөн таны браузер дээр харуулж байна...",
+            "Demo mode: previewing background locally...",
+          )
+        : ui(
+            "Дэвсгэр зураг байршуулж байна...",
+            "Background image is uploading...",
+          ),
     );
     let preparedFile = file;
     try {
@@ -2518,7 +2604,12 @@ export default function App() {
       preparedFile = file;
     }
     if (isDemoShare) {
-      setShareHint("Demo background preview added. It will not save publicly.");
+      setShareHint(
+        ui(
+          "Демо дэвсгэр нэмэгдлээ. Нийтийн линк дээр хадгалагдахгүй.",
+          "Demo background preview added. It will not save publicly.",
+        ),
+      );
       window.setTimeout(
         () => logDemoDiagnostics("after adding background image"),
         0,
@@ -2533,7 +2624,7 @@ export default function App() {
     );
     if (uploaded.ok === false) {
       setShareHint(null);
-      window.alert(toFriendlyUploadError(uploaded.error, "image"));
+      window.alert(toFriendlyUploadError(uploaded.error, "image", uiLanguage));
       return null;
     }
     if (typeof uploaded.bytesUsed === "number") {
@@ -2542,7 +2633,7 @@ export default function App() {
     if (typeof uploaded.bytesLimit === "number") {
       setShareStorageLimitBytes(uploaded.bytesLimit);
     }
-    setShareHint("Background image updated.");
+    setShareHint(ui("Дэвсгэр зураг шинэчлэгдлээ.", "Background image updated."));
     window.setTimeout(() => setShareHint(null), 1400);
     return uploaded.url;
   };
@@ -2645,8 +2736,14 @@ export default function App() {
     if (currentShareId) {
       setShareHint(
         isDemoShare
-          ? "Demo mode: adding image locally..."
-          : "Зургийг оновчлоод байршуулж байна...",
+          ? ui(
+              "Демо горим: зургийг зөвхөн таны браузер дээр нэмж байна...",
+              "Demo mode: adding image locally...",
+            )
+          : ui(
+              "Зургийг оновчлоод байршуулж байна...",
+              "Optimizing and uploading the image...",
+            ),
       );
       void (async () => {
         let preparedFile = file;
@@ -2676,7 +2773,12 @@ export default function App() {
             height: targetHeight,
           });
           window.setTimeout(() => logDemoDiagnostics("after adding image"), 0);
-          setShareHint("Demo image added. It will not save publicly.");
+          setShareHint(
+            ui(
+              "Демо зураг нэмэгдлээ. Нийтийн линк дээр хадгалагдахгүй.",
+              "Demo image added. It will not save publicly.",
+            ),
+          );
           window.setTimeout(() => setShareHint(null), 1800);
           return;
         }
@@ -2686,7 +2788,7 @@ export default function App() {
         );
         if (uploaded.ok === false) {
           setShareHint(null);
-          window.alert(toFriendlyUploadError(uploaded.error, "image"));
+          window.alert(toFriendlyUploadError(uploaded.error, "image", uiLanguage));
           return;
         }
         if (typeof uploaded.bytesUsed === "number") {
@@ -2705,7 +2807,7 @@ export default function App() {
           width: targetWidth,
           height: targetHeight,
         });
-        setShareHint("Зураг байршууллаа.");
+        setShareHint(ui("Зураг байршууллаа.", "Image uploaded."));
         window.setTimeout(() => setShareHint(null), 1400);
       })();
       e.target.value = "";
@@ -2714,7 +2816,10 @@ export default function App() {
 
     // Keep JSON light: force cloud upload workflow (no base64 fallback).
     window.alert(
-      "Эхлээд хуваалцах линк үүсгэх/нээх хэрэгтэй. Дараа нь тэнд зургаа байршуулна уу. Ингэснээр зураг cloud дээр хадгалагдана.",
+      ui(
+        "Эхлээд хуваалцах линк үүсгэх/нээх хэрэгтэй. Дараа нь тэнд зургаа байршуулна уу. Ингэснээр зураг cloud дээр хадгалагдана.",
+        "Create or open a share link first. Then upload your image there so it can be saved in the cloud.",
+      ),
     );
     e.target.value = "";
   };
@@ -2727,13 +2832,16 @@ export default function App() {
     if (!file) return;
     if (!currentShareId) {
       window.alert(
-        "Эхлээд хуваалцах линк үүсгэх/нээх хэрэгтэй. Дараа нь тэнд видео байршуулна уу.",
+        ui(
+          "Эхлээд хуваалцах линк үүсгэх/нээх хэрэгтэй. Дараа нь тэнд видео байршуулна уу.",
+          "Create or open a share link first. Then upload your video there.",
+        ),
       );
       e.target.value = "";
       return;
     }
     if (!file.type.startsWith("video/")) {
-      window.alert("Видео файл сонгоно уу.");
+      window.alert(ui("Видео файл сонгоно уу.", "Please choose a video file."));
       e.target.value = "";
       return;
     }
@@ -2744,21 +2852,24 @@ export default function App() {
         probeVideoSize(file).catch(() => null),
       ]);
       if (sec > 60) {
-        window.alert("Нэг видео хамгийн ихдээ 1 минут байна.");
+        window.alert(ui("Нэг видео хамгийн ихдээ 1 минут байна.", "One video can be at most 1 minute."));
         e.target.value = "";
         return;
       }
       mediaSize = size;
     } catch {
-      window.alert("Видеоны уртыг шалгаж чадсангүй.");
+      window.alert(ui("Видеоны уртыг шалгаж чадсангүй.", "Could not check the video length."));
       e.target.value = "";
       return;
     }
 
     setShareHint(
       isDemoShare
-        ? "Demo mode: adding video locally..."
-        : "Видео байршуулж байна...",
+        ? ui(
+            "Демо горим: видеог зөвхөн таны браузер дээр нэмж байна...",
+            "Demo mode: adding video locally...",
+          )
+        : ui("Видео байршуулж байна...", "Uploading video..."),
     );
     if (isDemoShare) {
       const targetWidth = 320;
@@ -2772,7 +2883,12 @@ export default function App() {
         height: targetHeight,
       });
       window.setTimeout(() => logDemoDiagnostics("after adding video"), 0);
-      setShareHint("Demo video added. It will not save publicly.");
+      setShareHint(
+        ui(
+          "Демо видео нэмэгдлээ. Нийтийн линк дээр хадгалагдахгүй.",
+          "Demo video added. It will not save publicly.",
+        ),
+      );
       window.setTimeout(() => setShareHint(null), 1800);
       e.target.value = "";
       return;
@@ -2780,7 +2896,7 @@ export default function App() {
     const uploaded = await uploadImageFileForShare(currentShareId, file);
     if (uploaded.ok === false) {
       setShareHint(null);
-      window.alert(toFriendlyUploadError(uploaded.error, "video"));
+      window.alert(toFriendlyUploadError(uploaded.error, "video", uiLanguage));
       e.target.value = "";
       return;
     }
@@ -2800,7 +2916,7 @@ export default function App() {
       width: targetWidth,
       height: targetHeight,
     });
-    setShareHint("Видео байршууллаа.");
+    setShareHint(ui("Видео байршууллаа.", "Video uploaded."));
     window.setTimeout(() => setShareHint(null), 1400);
     e.target.value = "";
   };
@@ -2848,15 +2964,36 @@ export default function App() {
     return (
       <>
         <div
-          className="h-dvh font-sans flex items-center justify-center px-4"
+          className="h-dvh font-sans flex items-center justify-center px-4 relative"
           style={{ backgroundColor: "#1f2937" }}
         >
+          <div className="absolute right-3 top-3 z-10 flex overflow-hidden rounded-full border border-white/25 bg-white/10 p-1 text-[11px] font-semibold text-white shadow-lg">
+            <button
+              type="button"
+              onClick={() => setUiLanguage("mn")}
+              className={`rounded-full px-3 py-1.5 transition-colors ${uiLanguage === "mn" ? "bg-white text-stone-900" : "text-white/85 hover:bg-white/15"}`}
+              aria-pressed={uiLanguage === "mn"}
+            >
+              MN
+            </button>
+            <button
+              type="button"
+              onClick={() => setUiLanguage("en")}
+              className={`rounded-full px-3 py-1.5 transition-colors ${uiLanguage === "en" ? "bg-white text-stone-900" : "text-white/85 hover:bg-white/15"}`}
+              aria-pressed={uiLanguage === "en"}
+            >
+              EN
+            </button>
+          </div>
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
             <h1 className="text-lg font-semibold text-stone-900">
-              Нууц үг оруулна уу
+              {ui("Нууц үг оруулна уу", "Enter password")}
             </h1>
             <p className="mt-1 text-sm text-stone-600">
-              Үндсэн scrapbook редакторт нэвтрэхийн тулд нууц үгээ оруулна уу.
+              {ui(
+                "Үндсэн scrapbook редакторт нэвтрэхийн тулд нууц үгээ оруулна уу.",
+                "Enter the password to access the main scrapbook editor.",
+              )}
             </p>
             <input
               type="password"
@@ -2876,7 +3013,7 @@ export default function App() {
               onClick={unlockStudio}
               className="mt-4 w-full rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
             >
-              Нэвтрэх
+              {ui("Нэвтрэх", "Sign in")}
             </button>
           </div>
         </div>
@@ -2910,15 +3047,21 @@ export default function App() {
         >
           <span className="min-w-0 flex-1">
             {shareLinkLoadError === "timeout"
-              ? "Холболт удаан байна. Дахин оролдоно уу."
-              : "Хадгалагдсан номыг ачаалж чадсангүй. Интернэтээ шалгана уу."}
+              ? ui(
+                  "Холболт удаан байна. Дахин оролдоно уу.",
+                  "The connection is slow. Please try again.",
+                )
+              : ui(
+                  "Хадгалагдсан номыг ачаалж чадсангүй. Интернетээ шалгана уу.",
+                  "Could not load the saved book. Please check your internet connection.",
+                )}
           </span>
           <button
             type="button"
             onClick={retryShareBootstrap}
             className="shrink-0 rounded-lg bg-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100"
           >
-            Дахин ачаалах
+            {ui("Дахин ачаалах", "Reload")}
           </button>
         </div>
       )}
@@ -2926,6 +3069,24 @@ export default function App() {
         className={`h-dvh font-sans flex touch-auto flex-col overflow-hidden ${isDemoShare ? "demo-route relative" : ""}`}
         style={appShellStyle}
       >
+        <div className="fixed right-3 top-3 z-80 flex overflow-hidden rounded-full border border-white/35 bg-black/35 p-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-md">
+          <button
+            type="button"
+            onClick={() => setUiLanguage("mn")}
+            className={`rounded-full px-3 py-1.5 transition-colors ${uiLanguage === "mn" ? "bg-white text-stone-900" : "text-white/85 hover:bg-white/15"}`}
+            aria-pressed={uiLanguage === "mn"}
+          >
+            MN
+          </button>
+          <button
+            type="button"
+            onClick={() => setUiLanguage("en")}
+            className={`rounded-full px-3 py-1.5 transition-colors ${uiLanguage === "en" ? "bg-white text-stone-900" : "text-white/85 hover:bg-white/15"}`}
+            aria-pressed={uiLanguage === "en"}
+          >
+            EN
+          </button>
+        </div>
         {isDemoShare && appBackgroundImage && (
           <DemoResponsiveImage
             src={appBackgroundImage}
@@ -2946,31 +3107,52 @@ export default function App() {
               {!canEditSharedLink ? (
                 <p className="mb-2 text-white/95">
                   {isShareEditExpired
-                    ? "Энэ линкийн засварлах хугацаа дууссан"
-                    : "Энэ хуваалцсан линк зөвхөн харах горимтой"}
+                    ? ui(
+                        "Энэ линкний засварлах хугацаа дууссан",
+                        "This link's editing window has expired",
+                      )
+                    : ui(
+                        "Энэ хуваалцсан линк зөвхөн харах горимтой",
+                        "This shared link is view-only",
+                      )}
                   {isShareEditExpired && Number.isFinite(shareEditDeadlineMs)
                     ? ` (${new Date(shareEditDeadlineMs).toLocaleString()})`
                     : ""}
-                  . Скрапбүүк яг хадгалсан хэвээр үлдэнэ.
+                  {ui(
+                    ". Скрапбүүк яг хадгалсан хэвээр үлдэнэ.",
+                    ". The scrapbook stays exactly as it was saved.",
+                  )}
                 </p>
               ) : (
                 <p className="mb-2 text-white/95">
                   {isDemoShare ? (
                     <>
-                      Demo sandbox: each visitor can try editing until{" "}
+                      {ui(
+                        "Демо sandbox: зочин бүр ",
+                        "Demo sandbox: each visitor can try editing until ",
+                      )}
                       {shareEditUntilIso &&
                       Number.isFinite(shareEditDeadlineMs) ? (
                         <span className="font-semibold whitespace-nowrap">
                           {new Date(shareEditDeadlineMs).toLocaleString()}
                         </span>
                       ) : (
-                        "five days after first opening"
+                        ui(
+                          "анх нээснээс хойш тав хоног",
+                          "five days after first opening",
+                        )
                       )}
-                      . Changes are private and never save to this public link.
+                      {ui(
+                        " хүртэл засаж туршиж болно. Өөрчлөлтүүд хувийн бөгөөд энэ нийтийн линк дээр хадгалагдахгүй.",
+                        ". Changes are private and never save to this public link.",
+                      )}
                     </>
                   ) : (
                     <>
-                      Засвар хийх боломжит хугацаа
+                      {ui(
+                        "Засвар хийх боломжит хугацаа",
+                        "Editing is available",
+                      )}
                       {shareEditUntilIso &&
                       Number.isFinite(shareEditDeadlineMs) ? (
                         <>
@@ -2978,12 +3160,15 @@ export default function App() {
                           <span className="font-semibold whitespace-nowrap">
                             {new Date(shareEditDeadlineMs).toLocaleString()}
                           </span>{" "}
-                          хүртэл.
+                          {ui("хүртэл.", "until.")}
                         </>
                       ) : (
                         "."
                       )}{" "}
-                      Өөрчлөлтүүд энэ линк дээр автоматаар хадгалагдана.
+                      {ui(
+                        "Өөрчлөлтүүд энэ линк дээр автоматаар хадгалагдана.",
+                        "Changes are saved automatically to this link.",
+                      )}
                     </>
                   )}
                 </p>
@@ -2996,7 +3181,7 @@ export default function App() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white text-stone-800 text-xs font-medium hover:bg-stone-100"
                   >
                     <Link2 size={14} />
-                    Линк хуулах
+                    {ui("Линк хуулах", "Copy link")}
                   </button>
                 )}
                 {canEditSharedLink && !isDemoShare && (
@@ -3005,7 +3190,7 @@ export default function App() {
                     onClick={() => setShowFinalizePrompt(true)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-600 text-white text-xs font-medium hover:bg-rose-700"
                   >
-                    Засвар дуусгах
+                    {ui("Засвар дуусгах", "Finish editing")}
                   </button>
                 )}
               </div>
@@ -3024,7 +3209,7 @@ export default function App() {
                     ? "demo-frosted bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
                 }`}
-                aria-label={isDemoShare ? "Previous page" : "Өмнөх хуудас"}
+                aria-label={ui("Өмнөх хуудас", "Previous page")}
               >
                 <ChevronLeft size={26} />
               </button>
@@ -3078,6 +3263,7 @@ export default function App() {
                             demoHdIntent={demoHdIntent}
                             demoArmedVideoIds={demoArmedVideoIds}
                             armDemoVideo={armDemoVideo}
+                            language={uiLanguage}
                           />
                         </MotionConfig>
                       ) : (
@@ -3115,6 +3301,7 @@ export default function App() {
                               demoHdIntent={demoHdIntent}
                               demoArmedVideoIds={demoArmedVideoIds}
                               armDemoVideo={armDemoVideo}
+                              language={uiLanguage}
                             />
                           );
                         })
@@ -3133,7 +3320,7 @@ export default function App() {
                     ? "demo-frosted bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
                 }`}
-                aria-label={isDemoShare ? "Next page" : "Дараагийн хуудас"}
+                aria-label={ui("Дараагийн хуудас", "Next page")}
               >
                 <ChevronRight size={26} />
               </button>
@@ -3146,8 +3333,11 @@ export default function App() {
               {sharedViewMode && (
                 <p className="text-xs text-white/90 bg-black/40 px-3 py-1.5 rounded-full border border-white/20">
                   {isDemoShare
-                    ? "Demo mode: edits are private and not saved"
-                    : `Үлдсэн зай: ${storageLeftMb.toFixed(2)} MB`}
+                    ? ui(
+                        "Демо горим: засварууд хувийн бөгөөд хадгалагдахгүй",
+                        "Demo mode: edits are private and not saved",
+                      )
+                    : `${ui("Үлдсэн зай", "Storage left")}: ${storageLeftMb.toFixed(2)} MB`}
                 </p>
               )}
               {shareHint && (
@@ -3171,11 +3361,11 @@ export default function App() {
                       title={
                         isDemoShare
                           ? isEditing
-                            ? "Preview"
-                            : "Edit"
+                            ? ui("Урьдчилж харах", "Preview")
+                            : ui("Засах", "Edit")
                           : isEditing
-                            ? "Урьдчилж харах"
-                            : "Засах"
+                            ? ui("Урьдчилж харах", "Preview")
+                            : ui("Засах", "Edit")
                       }
                     >
                       {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
@@ -3189,7 +3379,7 @@ export default function App() {
                           onClick={undo}
                           disabled={historyIndex === 0}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={isDemoShare ? "Undo" : "Буцаах"}
+                          title={ui("Буцаах", "Undo")}
                         >
                           <Undo2 size={18} />
                         </button>
@@ -3198,7 +3388,7 @@ export default function App() {
                           onClick={redo}
                           disabled={historyIndex === history.length - 1}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={isDemoShare ? "Redo" : "Дахин хийх"}
+                          title={ui("Дахин хийх", "Redo")}
                         >
                           <Redo2 size={18} />
                         </button>
@@ -3212,7 +3402,10 @@ export default function App() {
                           type="button"
                           onClick={() => void copyShareLink()}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
-                          title="Энэ скрапбүүкийг явуулах линк хуулах"
+                          title={ui(
+                            "Энэ скрапбүүкийг явуулах линк хуулах",
+                            "Copy the link to send this scrapbook",
+                          )}
                         >
                           <Link2 size={18} />
                         </button>
@@ -3242,7 +3435,7 @@ export default function App() {
                         updatePagesWithHistory(newPages);
                       }}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
-                      title="Хуудас нэмэх"
+                      title={ui("Хуудас нэмэх", "Add page")}
                     >
                       <Plus size={20} />
                     </button>
@@ -3257,11 +3450,11 @@ export default function App() {
                       title={
                         isDemoShare
                           ? isEditing
-                            ? "Preview"
-                            : "Edit"
+                            ? ui("Урьдчилж харах", "Preview")
+                            : ui("Засах", "Edit")
                           : isEditing
-                            ? "Урьдчилж харах"
-                            : "Засах"
+                            ? ui("Урьдчилж харах", "Preview")
+                            : ui("Засах", "Edit")
                       }
                     >
                       {isEditing ? <Check size={18} /> : <Edit3 size={18} />}
@@ -3274,7 +3467,7 @@ export default function App() {
                           onClick={undo}
                           disabled={historyIndex === 0}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={isDemoShare ? "Undo" : "Буцаах"}
+                          title={ui("Буцаах", "Undo")}
                         >
                           <Undo2 size={18} />
                         </button>
@@ -3283,7 +3476,7 @@ export default function App() {
                           onClick={redo}
                           disabled={historyIndex === history.length - 1}
                           className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={isDemoShare ? "Redo" : "Дахин хийх"}
+                          title={ui("Дахин хийх", "Redo")}
                         >
                           <Redo2 size={18} />
                         </button>
@@ -3298,7 +3491,7 @@ export default function App() {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-stone-800 text-sm font-medium hover:bg-stone-100"
                   >
                     <Link2 size={16} />
-                    Линк хуулах
+                    {ui("Линк хуулах", "Copy link")}
                   </button>
                 )}
               </div>
@@ -3318,7 +3511,9 @@ export default function App() {
               >
                 <GripVertical className="size-4 text-stone-400 md:size-[18px]" />
                 <span className="text-xs font-semibold text-stone-700 md:text-sm">
-                  {isDemoShare ? "Edit demo" : "Засвар"}
+                  {isDemoShare
+                    ? ui("Demo засах", "Edit demo")
+                    : ui("Засвар", "Edit")}
                 </span>
               </div>
               <div
@@ -3328,6 +3523,7 @@ export default function App() {
                 <EditorPanelBody
                   selectedPageId={selectedPageId}
                   isDemoMode={isDemoShare}
+                  language={uiLanguage}
                   selectedElementId={selectedElementId}
                   pages={pages}
                   openAccordion={openAccordion}
@@ -3397,11 +3593,13 @@ export default function App() {
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 px-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
               <p className="text-base font-semibold text-stone-900 mb-2">
-                Анхааруулга
+                {ui("Анхааруулга", "Warning")}
               </p>
               <p className="text-sm leading-6 text-stone-700">
-                Үүнийг буцаах боломжгүй, дахин засвар оруулах боломжгүй болно.
-                Та дууссандаа итгэлтэй байна уу?
+                {ui(
+                  "Үүнийг буцаах боломжгүй, дахин засвар оруулах боломжгүй болно. Та дууссандаа итгэлтэй байна уу?",
+                  "This cannot be undone, and no more edits can be made. Are you sure you are finished?",
+                )}
               </p>
               <div className="mt-5 flex justify-end gap-2">
                 <button
@@ -3410,7 +3608,7 @@ export default function App() {
                   disabled={isFinalizing}
                   className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
                 >
-                  Үгүй
+                  {ui("Үгүй", "No")}
                 </button>
                 <button
                   type="button"
@@ -3418,7 +3616,9 @@ export default function App() {
                   disabled={isFinalizing}
                   className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
                 >
-                  {isFinalizing ? "Түр хүлээнэ үү..." : "Тийм"}
+                  {isFinalizing
+                    ? ui("Түр хүлээнэ үү...", "Please wait...")
+                    : ui("Тийм", "Yes")}
                 </button>
               </div>
             </div>
@@ -3435,7 +3635,7 @@ export default function App() {
   );
 }
 
-/** Flat 2D spread while editing — avoids broken pointer hit-testing from 3D transforms (bends / translateZ). */
+/** Flat 2D spread while editing â€” avoids broken pointer hit-testing from 3D transforms (bends / translateZ). */
 function EditingSpread({
   pages,
   visibleLeftPageId,
@@ -3453,6 +3653,7 @@ function EditingSpread({
   demoHdIntent,
   demoArmedVideoIds,
   armDemoVideo,
+  language,
 }: {
   pages: PageData[];
   visibleLeftPageId: string | null;
@@ -3478,6 +3679,7 @@ function EditingSpread({
   demoHdIntent: boolean;
   demoArmedVideoIds: Record<string, boolean>;
   armDemoVideo: (id: string) => void;
+  language: Language;
 }) {
   const left = visibleLeftPageId
     ? pages.find((p) => p.id === visibleLeftPageId)
@@ -3515,6 +3717,7 @@ function EditingSpread({
               demoHdIntent={demoHdIntent}
               demoArmedVideoIds={demoArmedVideoIds}
               armDemoVideo={armDemoVideo}
+              language={language}
             />
           </div>
           <div
@@ -3536,6 +3739,7 @@ function EditingSpread({
               demoHdIntent={demoHdIntent}
               demoArmedVideoIds={demoArmedVideoIds}
               armDemoVideo={armDemoVideo}
+              language={language}
             />
           </div>
         </>
@@ -3560,6 +3764,7 @@ function EditingSpread({
             demoHdIntent={demoHdIntent}
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
+            language={language}
           />
         </div>
       )}
@@ -3583,6 +3788,7 @@ function EditingSpread({
             demoHdIntent={demoHdIntent}
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
+            language={language}
           />
         </div>
       )}
@@ -3611,6 +3817,7 @@ function FlipPage({
   demoHdIntent = false,
   demoArmedVideoIds = {},
   armDemoVideo = () => {},
+  language = "mn",
 }: any) {
   const isFlipped = i < currentLeaf;
 
@@ -3728,7 +3935,7 @@ function FlipPage({
     return () => window.clearTimeout(id);
   }, [isDemoShare, isFlipped, isInteractive]);
 
-  // FIX-J (demo): Diagnostics overlay — only on leaf i===0 to avoid creating
+  // FIX-J (demo): Diagnostics overlay â€” only on leaf i===0 to avoid creating
   // and destroying the overlay on every leaf mount/unmount cycle.
   // Guard: only activates when ?diag is present in the URL.
   useEffect(() => {
@@ -3771,7 +3978,7 @@ function FlipPage({
             x: shadowX,
             scale: shadowScale,
             zIndex: shadowZIndex,
-            /* FIX-D: box-shadow instead of filter:blur — no compositing surface */
+            /* FIX-D: box-shadow instead of filter:blur â€” no compositing surface */
             background: "rgba(0,0,0,0.22)",
             boxShadow: "0 0 48px 32px rgba(0,0,0,0.28)",
           }}
@@ -3810,6 +4017,7 @@ function FlipPage({
             demoHdIntent={demoHdIntent}
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
+            language={language}
           />
 
           {/* Static spine shadow */}
@@ -3869,6 +4077,7 @@ function FlipPage({
             demoHdIntent={demoHdIntent}
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
+            language={language}
           />
 
           {/* Static spine shadow */}
@@ -3997,6 +4206,7 @@ function PageContent({
   demoHdIntent,
   demoArmedVideoIds,
   armDemoVideo,
+  language,
 }: {
   page?: PageData;
   isEditing: boolean;
@@ -4021,6 +4231,7 @@ function PageContent({
   demoHdIntent: boolean;
   demoArmedVideoIds: Record<string, boolean>;
   armDemoVideo: (id: string) => void;
+  language: Language;
 }) {
   if (!page) return <div className="w-full h-full bg-stone-200" />;
   const useClassBackground = page.background.startsWith("bg-");
@@ -4087,6 +4298,7 @@ function PageContent({
           demoHdIntent={demoHdIntent}
           isDemoVideoArmed={Boolean(demoArmedVideoIds[el.id])}
           armDemoVideo={armDemoVideo}
+          language={language}
         />
       ))}
     </div>
@@ -4108,6 +4320,7 @@ function DraggableElement({
   demoHdIntent,
   isDemoVideoArmed,
   armDemoVideo,
+  language,
 }: {
   key?: React.Key;
   element: PageElement;
@@ -4124,6 +4337,7 @@ function DraggableElement({
   demoHdIntent: boolean;
   isDemoVideoArmed: boolean;
   armDemoVideo: (id: string) => void;
+  language: Language;
 }) {
   const stageScale = useBookStageScale();
   const inv = stageScale > 0 ? 1 / stageScale : 1;
@@ -4575,7 +4789,7 @@ function DraggableElement({
               onPointerDown={armCurrentDemoVideo}
               onClick={armCurrentDemoVideo}
             >
-              Tap to preview
+              {language === "en" ? "Tap to preview" : "Урьдчилж харах"}
             </button>
           )}
         </div>
@@ -4611,7 +4825,7 @@ function DraggableElement({
               />
             </>
           )}
-          {/* ── Layer controls: To Front / To Back ── */}
+          {/* â”€â”€ Layer controls: To Front / To Back â”€â”€ */}
           <button
             type="button"
             data-transform-handle="true"
