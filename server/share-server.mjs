@@ -303,6 +303,7 @@ app.use((req, res, next) => {
 });
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+console.log("RESEND_API_KEY exists:", Boolean(process.env.RESEND_API_KEY));
 
 function shareFilePath(id) {
   return path.join(DATA_DIR, `${path.basename(id)}.json`);
@@ -698,18 +699,22 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
 app.post("/gumroad-webhook", async (req, res) => {
   try {
     console.log("🔥 GUMROAD WEBHOOK HIT");
-    console.log("Headers:", req.headers);
-    console.log("Body:", req.body);
+    console.log("📦 BODY:", req.body);
 
-    const data = req.body || {};
-    const customerEmail = data.email || data.purchaser_email || data.buyer_email;
+    const email = req.body.email;
+    console.log("📧 Customer Email:", email);
 
-    if (!customerEmail) {
+    if (!email) {
       return res.status(400).send("No customer email found");
     }
 
+    console.log("🟡 Starting share ID generation");
     const shareId = randomBytes(12).toString("base64url");
+    console.log("🟡 Share ID generated:", shareId);
+
+    console.log("🟡 Building share URL");
     const shareUrl = `https://scrapbook.56moments.store/share?id=${shareId}`;
+    console.log("🟡 Final Share URL:", shareUrl);
 
     await persistShare(shareId, {
       v: 1,
@@ -717,21 +722,33 @@ app.post("/gumroad-webhook", async (req, res) => {
       mediaBytes: 0,
     });
 
-    await resend.emails.send({
-      from: process.env.RESEND_FROM || "56 Moments <onboarding@resend.dev>",
-      to: customerEmail,
-      subject: "Your design link is ready",
-      html: `
-        <h2>Thank you for your purchase!</h2>
-        <p>Your design link is ready:</p>
-        <p><a href="${shareUrl}">${shareUrl}</a></p>
-      `,
-    });
+    console.log("🟡 About to send email with Resend");
 
-    res.status(200).send("Email sent");
+    let resendResponse;
+    try {
+      resendResponse = await resend.emails.send({
+        from: process.env.RESEND_FROM || "56 Moments <onboarding@resend.dev>",
+        to: email,
+        subject: "Your design link is ready",
+        html: `
+          <h2>Thank you for your purchase!</h2>
+          <p>Your design link is ready:</p>
+          <p><a href="${shareUrl}">${shareUrl}</a></p>
+        `,
+      });
+    } catch (error) {
+      console.error("❌ Resend send failed:");
+      console.error(error);
+      throw error;
+    }
+
+    console.log("✅ Email sent successfully");
+    console.log("📨 Resend response:", resendResponse);
+
+    return res.status(200).send("Email sent");
   } catch (error) {
     console.error(error);
-    res.status(500).send("Server error");
+    return res.status(500).send("Server error");
   }
 });
 
