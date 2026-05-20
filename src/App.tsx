@@ -158,7 +158,7 @@ function getInitialPagesAndShare(): {
     return { pages: defaultPages, openedFromShareLink: false };
   }
   const params = new URLSearchParams(window.location.search);
-  if (params.get("share")) {
+  if (params.get("share") || params.get("id")) {
     return { pages: defaultPages, openedFromShareLink: true };
   }
   const fromHash = parsePagesFromHash(window.location.hash);
@@ -2031,7 +2031,7 @@ export default function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sid = params.get("share");
+    const sid = params.get("share") || params.get("id");
     let cancelled = false;
     if (!sid) {
       setShareLinkLoadError(null);

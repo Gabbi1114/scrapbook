@@ -4,6 +4,7 @@
  * `node server/share-server.mjs` alone on port 3001.
  */
 import express from "express";
+import { Resend } from "resend";
 import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
@@ -34,6 +35,10 @@ const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
 const R2_BUCKET = process.env.R2_BUCKET || "";
 const PUBLIC_API_BASE = process.env.PUBLIC_API_BASE || "";
+const PUBLIC_SITE_URL =
+  process.env.PUBLIC_SITE_URL ||
+  PUBLIC_API_BASE ||
+  "https://scrapbook.56moments.store/share";
 
 const hasR2Config =
   R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET;
@@ -277,6 +282,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const app = express();
 app.use(express.json({ limit: "80mb" }));
+app.use(express.urlencoded({ extended: true, limit: "80mb" }));
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,PUT,OPTIONS");
@@ -299,6 +305,8 @@ app.use((req, res, next) => {
 
   next();
 });
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function shareFilePath(id) {
   return path.join(DATA_DIR, `${path.basename(id)}.json`);
@@ -620,6 +628,13 @@ function extFromMime(mime, fallback = ".bin") {
   return fallback;
 }
 
+function buildPublicShareUrl(req, shareId) {
+  const base = PUBLIC_SITE_URL || `${req.protocol}://${req.get("host")}`;
+  const u = new URL(base);
+  u.searchParams.set("id", shareId);
+  return u.toString();
+}
+
 async function transcodeVideoForStorage(inputBuffer, mime) {
   if (!ffmpegPath || !ffprobeStatic.path) {
     return {
@@ -690,6 +705,46 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
     void fsp.unlink(outputPath).catch(() => {});
   }
 }
+
+app.post("/gumroad-webhook", async (req, res) => {
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      return res.status(500).send("RESEND_API_KEY is not configured");
+    }
+
+    const data = req.body || {};
+    const customerEmail = data.email || data.purchaser_email || data.buyer_email;
+
+    if (!customerEmail) {
+      return res.status(400).send("No customer email found");
+    }
+
+    const shareId = randomBytes(12).toString("base64url");
+    const shareUrl = buildPublicShareUrl(req, shareId);
+
+    await persistShare(shareId, {
+      v: 1,
+      pages: DEMO_BIRTHDAY_PAGES,
+      mediaBytes: 0,
+    });
+
+    await resend.emails.send({
+      from: process.env.RESEND_FROM || "56 Moments <onboarding@resend.dev>",
+      to: customerEmail,
+      subject: "Your design link is ready",
+      html: `
+        <h2>Thank you for your purchase!</h2>
+        <p>Your design link is ready:</p>
+        <p><a href="${shareUrl}">${shareUrl}</a></p>
+      `,
+    });
+
+    res.status(200).send("Email sent");
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Server error");
+  }
+});
 
 app.post("/api/share", async (req, res) => {
   try {
