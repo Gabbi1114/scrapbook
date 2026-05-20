@@ -35,6 +35,11 @@ const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
 const R2_BUCKET = process.env.R2_BUCKET || "";
 const PUBLIC_API_BASE = process.env.PUBLIC_API_BASE || "";
+const STUDIO_ROOT_SHARE_ID = (
+  process.env.STUDIO_ROOT_SHARE_ID ||
+  process.env.VITE_STUDIO_ROOT_SHARE_ID ||
+  "studio-root"
+).trim();
 
 const hasR2Config =
   R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET;
@@ -625,6 +630,27 @@ function extFromMime(mime, fallback = ".bin") {
   return fallback;
 }
 
+async function buildGumroadSharePayload() {
+  const source = await loadShareOrNull(STUDIO_ROOT_SHARE_ID);
+  const sourceData = source?.data;
+  const pages = Array.isArray(sourceData?.pages)
+    ? sourceData.pages
+    : DEMO_BIRTHDAY_PAGES;
+
+  return {
+    v: 1,
+    pages: JSON.parse(JSON.stringify(pages)),
+    mediaBytes: 0,
+    ...(typeof sourceData?.musicUrl === "string" && sourceData.musicUrl.trim()
+      ? { musicUrl: sourceData.musicUrl.trim() }
+      : {}),
+    ...(typeof sourceData?.appBackgroundImage === "string" &&
+    sourceData.appBackgroundImage.trim()
+      ? { appBackgroundImage: sourceData.appBackgroundImage.trim() }
+      : {}),
+  };
+}
+
 async function transcodeVideoForStorage(inputBuffer, mime) {
   if (!ffmpegPath || !ffprobeStatic.path) {
     return {
@@ -716,11 +742,7 @@ app.post("/gumroad-webhook", async (req, res) => {
     const shareUrl = `https://scrapbook.56moments.store/share?id=${shareId}`;
     console.log("🟡 Final Share URL:", shareUrl);
 
-    await persistShare(shareId, {
-      v: 1,
-      pages: DEMO_BIRTHDAY_PAGES,
-      mediaBytes: 0,
-    });
+    await persistShare(shareId, await buildGumroadSharePayload());
 
     console.log("🟡 About to send email with Resend");
 
