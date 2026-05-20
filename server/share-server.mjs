@@ -727,7 +727,9 @@ app.post("/gumroad-webhook", async (req, res) => {
     let resendResponse;
     try {
       resendResponse = await resend.emails.send({
-        from: process.env.RESEND_FROM || "56 Moments <onboarding@resend.dev>",
+        from:
+          process.env.RESEND_FROM ||
+          "56 Moments <hello@scrapbook.56moments.store>",
         to: email,
         subject: "Your design link is ready",
         html: `
