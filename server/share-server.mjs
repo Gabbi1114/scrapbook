@@ -4,6 +4,7 @@
  * `node server/share-server.mjs` alone on port 3001.
  */
 import express from "express";
+import { Resend } from "resend";
 import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
@@ -300,6 +301,8 @@ app.use((req, res, next) => {
 
   next();
 });
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function shareFilePath(id) {
   return path.join(DATA_DIR, `${path.basename(id)}.json`);
@@ -693,11 +696,43 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
 }
 
 app.post("/gumroad-webhook", async (req, res) => {
-  console.log("🔥 GUMROAD WEBHOOK HIT");
-  console.log("Headers:", req.headers);
-  console.log("Body:", req.body);
+  try {
+    console.log("🔥 GUMROAD WEBHOOK HIT");
+    console.log("Headers:", req.headers);
+    console.log("Body:", req.body);
 
-  res.status(200).send("Gumroad webhook received");
+    const data = req.body || {};
+    const customerEmail = data.email || data.purchaser_email || data.buyer_email;
+
+    if (!customerEmail) {
+      return res.status(400).send("No customer email found");
+    }
+
+    const shareId = randomBytes(12).toString("base64url");
+    const shareUrl = `https://scrapbook.56moments.store/share?id=${shareId}`;
+
+    await persistShare(shareId, {
+      v: 1,
+      pages: DEMO_BIRTHDAY_PAGES,
+      mediaBytes: 0,
+    });
+
+    await resend.emails.send({
+      from: process.env.RESEND_FROM || "56 Moments <onboarding@resend.dev>",
+      to: customerEmail,
+      subject: "Your design link is ready",
+      html: `
+        <h2>Thank you for your purchase!</h2>
+        <p>Your design link is ready:</p>
+        <p><a href="${shareUrl}">${shareUrl}</a></p>
+      `,
+    });
+
+    res.status(200).send("Email sent");
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Server error");
+  }
 });
 
 app.post("/api/share", async (req, res) => {
