@@ -80,72 +80,7 @@ declare global {
 // Safe layout zone: image right edge ≤ 680, bottom edge ≤ 520.
 // Rotation adds ~20px visual bleed, so stay well inside 800×600.
 const defaultPages: PageData[] = [
-  // cover — big title left, photo right, stickers scattered
-  { id: "cover", background: "bg-rose-100", pattern: "pattern-polka", elements: [
-    { id:"t1a", type:"text", x:45, y:108, rotation:-4, content:"MY", fontSize:72, color:"#e11d48", fontFamily:"var(--font-handwriting)", textEffect:"none", fontWeight:"bold" },
-    { id:"t1b", type:"text", x:45, y:185, rotation:3, content:"SCRAPBOOK", fontSize:52, color:"#e11d48", fontFamily:"var(--font-handwriting)", textEffect:"none", fontWeight:"bold" },
-    { id:"t1c", type:"text", x:58, y:268, rotation:-1, content:"moments & memories ♡", fontSize:20, color:"#f43f5e", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"t1d", type:"text", x:58, y:315, rotation:-3, content:" ✿ 2025 ✿ ", fontSize:14, color:"#fff", fontFamily:"var(--font-handwriting)", textEffect:"none", textBackgroundColor:"#e11d48" },
-    { id:"i1a", type:"image", x:432, y:72, rotation:5, content:"https://images.unsplash.com/photo-1513151233558-d860c5398176", width:172, height:218 },
-    { id:"s1a", type:"sticker", x:555, y:42, rotation:22, content:"🌸", fontSize:56 },
-    { id:"s1b", type:"sticker", x:590, y:318, rotation:-10, content:"💕", fontSize:48 },
-    { id:"s1c", type:"sticker", x:42, y:372, rotation:12, content:"✨", fontSize:44 },
-    { id:"s1d", type:"sticker", x:248, y:398, rotation:0, content:"🌺", fontSize:40 },
-  ] },
-  // inside cover — hello intro + two small photos + hints
-  { id: "inside-cover", background: "bg-amber-50", pattern: "pattern-grid", elements: [
-    { id:"t2a", type:"text", x:46, y:65, rotation:2, content:"Hello! 👋", fontSize:48, color:"#d97706", fontFamily:"var(--font-handwriting)", textEffect:"none", fontWeight:"bold" },
-    { id:"t2b", type:"text", x:50, y:148, rotation:0, content:"welcome to my little corner of memories", fontSize:16, color:"#92400e", fontFamily:"var(--font-handwriting)", textEffect:"none" },
-    { id:"t2c", type:"text", x:50, y:295, rotation:-2, content:"tap any element to edit it ✏️", fontSize:14, color:"#a16207", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"t2d", type:"text", x:50, y:330, rotation:0, content:"use the panel → to add photos & stickers", fontSize:14, color:"#a16207", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"t2e", type:"text", x:50, y:385, rotation:-2, content:" 💌 made with love ", fontSize:13, color:"#fff", fontFamily:"var(--font-handwriting)", textEffect:"none", textBackgroundColor:"#d97706" },
-    { id:"i2a", type:"image", x:315, y:62, rotation:-5, content:"https://images.unsplash.com/photo-1527529482837-4698179dc6ce", width:152, height:195 },
-    { id:"i2b", type:"image", x:482, y:145, rotation:4, content:"https://images.unsplash.com/photo-1602173574767-37ac01994b2a", width:148, height:188 },
-    { id:"s2a", type:"sticker", x:622, y:355, rotation:12, content:"💛", fontSize:44 },
-  ] },
-  // page 1 — best moments, 3 photos in a row
-  { id: "page-1", background: "bg-rose-50", pattern: "pattern-polka", elements: [
-    { id:"t3a", type:"text", x:42, y:45, rotation:-2, content:"Best Moments", fontSize:36, color:"#e11d48", fontFamily:"var(--font-handwriting)", textEffect:"none", fontWeight:"bold" },
-    { id:"i3a", type:"image", x:42, y:105, rotation:-7, content:"https://images.unsplash.com/photo-1513151233558-d860c5398176", width:148, height:190 },
-    { id:"i3b", type:"image", x:212, y:85, rotation:4, content:"https://images.unsplash.com/photo-1519741497674-611481863552", width:148, height:190 },
-    { id:"i3c", type:"image", x:392, y:105, rotation:-3, content:"https://images.unsplash.com/photo-1558618666-fcd25c85cd64", width:148, height:190 },
-    { id:"t3b", type:"text", x:55, y:318, rotation:3, content:"summer vibes ☀️", fontSize:13, color:"#be185d", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"t3c", type:"text", x:392, y:310, rotation:-2, content:"best day ever! 🎉", fontSize:13, color:"#be185d", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"s3a", type:"sticker", x:555, y:305, rotation:0, content:"⭐", fontSize:42 },
-    { id:"t3d", type:"text", x:42, y:428, rotation:-1, content:" 📅 summer 2025 ", fontSize:13, color:"#fff", fontFamily:"var(--font-handwriting)", textEffect:"none", textBackgroundColor:"#e11d48" },
-  ] },
-  // page 2 — adventures, 2 photos + quote + stickers
-  { id: "page-2", background: "bg-sky-50", pattern: "pattern-lines", elements: [
-    { id:"t4a", type:"text", x:42, y:48, rotation:-2, content:"Adventures", fontSize:42, color:"#0369a1", fontFamily:"var(--font-handwriting)", textEffect:"none", fontWeight:"bold" },
-    { id:"i4a", type:"image", x:42, y:112, rotation:-5, content:"https://images.unsplash.com/photo-1519741497674-611481863552", width:165, height:210 },
-    { id:"i4b", type:"image", x:235, y:92, rotation:5, content:"https://images.unsplash.com/photo-1558618666-fcd25c85cd64", width:152, height:195 },
-    { id:"t4b", type:"text", x:412, y:92, rotation:-1, content:'"life is a daring', fontSize:16, color:"#0c4a6e", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"t4c", type:"text", x:412, y:120, rotation:1, content:'adventure"', fontSize:16, color:"#0c4a6e", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"s4a", type:"sticker", x:418, y:162, rotation:15, content:"✈️", fontSize:52 },
-    { id:"s4b", type:"sticker", x:548, y:262, rotation:-8, content:"🗺️", fontSize:44 },
-    { id:"t4d", type:"text", x:42, y:362, rotation:1, content:"📍 exploring the world", fontSize:14, color:"#075985", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"t4e", type:"text", x:42, y:428, rotation:-2, content:" 🌍 let's go everywhere ", fontSize:13, color:"#fff", fontFamily:"var(--font-handwriting)", textEffect:"none", textBackgroundColor:"#0369a1" },
-  ] },
-  // page 3 — memories, polaroid + photo layered
-  { id: "page-3", background: "bg-violet-50", pattern: "pattern-grid", elements: [
-    { id:"t5a", type:"text", x:40, y:52, rotation:-1, content:"Memories", fontSize:44, color:"#7c3aed", fontFamily:"var(--font-handwriting)", textEffect:"none", fontWeight:"bold" },
-    { id:"s5p", type:"sticker", x:42, y:118, rotation:-6, content:"__POLAROID__", width:185, height:242, frameImage:"https://images.unsplash.com/photo-1533038590840-1cde6e668a91" },
-    { id:"i5a", type:"image", x:355, y:75, rotation:4, content:"https://images.unsplash.com/photo-1464349153735-7db50ed83c84", width:162, height:208 },
-    { id:"i5b", type:"image", x:488, y:162, rotation:-4, content:"https://images.unsplash.com/photo-1602173574767-37ac01994b2a", width:148, height:188 },
-    { id:"t5b", type:"text", x:358, y:305, rotation:-2, content:"forever in my heart 💜", fontSize:16, color:"#6d28d9", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"s5a", type:"sticker", x:568, y:45, rotation:20, content:"🎀", fontSize:50 },
-    { id:"s5b", type:"sticker", x:42, y:398, rotation:-8, content:"💜", fontSize:46 },
-    { id:"t5c", type:"text", x:42, y:428, rotation:2, content:" ✦ keep these close to your heart ✦ ", fontSize:13, color:"#fff", fontFamily:"var(--font-handwriting)", textEffect:"none", textBackgroundColor:"#7c3aed" },
-  ] },
-  // back cover
-  { id: "back-cover", background: "bg-rose-100", pattern: "pattern-polka", elements: [
-    { id:"t6a", type:"text", x:95, y:178, rotation:-3, content:"the end ✨", fontSize:54, color:"#e11d48", fontFamily:"var(--font-handwriting)", textEffect:"none", fontWeight:"bold" },
-    { id:"t6b", type:"text", x:125, y:268, rotation:0, content:"made with love 💕", fontSize:22, color:"#f43f5e", fontFamily:"var(--font-handwriting)", textEffect:"none" },
-    { id:"t6c", type:"text", x:115, y:418, rotation:1, content:"← flip back to the beginning", fontSize:13, color:"#9f1239", fontFamily:"var(--font-handwriting)", textEffect:"none", fontStyle:"italic" },
-    { id:"s6a", type:"sticker", x:548, y:108, rotation:25, content:"🌸", fontSize:68 },
-    { id:"s6b", type:"sticker", x:555, y:295, rotation:-15, content:"💕", fontSize:46 },
-    { id:"s6c", type:"sticker", x:82, y:112, rotation:10, content:"✨", fontSize:52 },
-  ] },
+  { id: "blank-page", background: "bg-white", pattern: "", elements: [] },
 ];
 
 const POLAROID_STICKER_TOKEN = "__POLAROID__";
