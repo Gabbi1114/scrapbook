@@ -1,16 +1,19 @@
 /**
- * Service Worker — network-first strategy for all dynamic content.
- * Static shell assets (JS/CSS/fonts) are cached with network-first + stale fallback.
+ * Service Worker — network-first for HTML/API, cache-first for hashed assets.
  * API endpoints are NEVER cached.
- * Version bump forces cache invalidation on every deploy.
+ * Bump SW_VERSION to force a full cache reset on clients.
+ * (Must be a constant: a per-startup value like Date.now() changes the cache
+ * name on every worker restart, so the cache never hits and storage leaks.)
  */
-const SW_VERSION = Date.now(); // replaced at build time via cache-busting
+const SW_VERSION = "2";
 const CACHE_NAME = `app-shell-v${SW_VERSION}`;
 const SHELL_URLS = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
-  "/assets/favicon.png",
+  "/icons/icon-512.png",
+  "/icons/apple-touch-icon.png",
+  "/icons/favicon-64.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -44,9 +47,11 @@ self.addEventListener("activate", (event) => {
 function isStaticShellAsset(requestUrl, destination) {
   if (requestUrl.origin !== self.location.origin) return false;
   if (requestUrl.pathname.startsWith("/api/")) return false;
-  // Vite hashed assets under /assets/ are safe to cache.
+  // Vite hashed assets under /assets/, plus static icons and fonts.
   return (
-    requestUrl.pathname.startsWith("/assets/") &&
+    (requestUrl.pathname.startsWith("/assets/") ||
+      requestUrl.pathname.startsWith("/icons/") ||
+      requestUrl.pathname.startsWith("/fonts/")) &&
     (destination === "script" ||
       destination === "style" ||
       destination === "font" ||
@@ -86,18 +91,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static hashed assets: network-first, update cache, serve stale on failure.
+  // Static hashed assets: content hash in the filename makes them immutable,
+  // so serve from cache instantly and only hit the network on a miss.
   if (isStaticShellAsset(url, request.destination)) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
-        fetch(request, { cache: "no-cache" })
-          .then((response) => {
-            if (response.ok) {
-              cache.put(request, response.clone());
-            }
-            return response;
-          })
-          .catch(() => cache.match(request).then((c) => c || Response.error())),
+        cache.match(request).then(
+          (cached) =>
+            cached ||
+            fetch(request)
+              .then((response) => {
+                if (response.ok) {
+                  cache.put(request, response.clone());
+                }
+                return response;
+              })
+              .catch(() => Response.error()),
+        ),
       ),
     );
     return;

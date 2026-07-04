@@ -13,33 +13,29 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       isProd && javaScriptObfuscator({
         options: {
-          // Rename variables/functions → unreadable
+          // Light-protection profile: identifier renaming + string array only.
+          // Control-flow flattening, dead-code injection, self-defending,
+          // splitStrings and transformObjectKeys were removed — they slow
+          // main-thread execution by multiples and inflate the bundle,
+          // which dominated load/render time on phones.
           renameGlobals: false,
           identifierNamesGenerator: 'hexadecimal',
-          // Control flow flattening makes logic hard to follow
-          controlFlowFlattening: true,
-          controlFlowFlatteningThreshold: 0.4,
-          // Dead code injection adds fake code blocks
-          deadCodeInjection: true,
-          deadCodeInjectionThreshold: 0.2,
-          // String encoding
+          controlFlowFlattening: false,
+          deadCodeInjection: false,
           stringArray: true,
-          stringArrayEncoding: ['base64'],
-          stringArrayThreshold: 0.75,
+          stringArrayEncoding: ['none'],
+          stringArrayThreshold: 0.5,
           stringArrayRotate: true,
           stringArrayShuffle: true,
           // Hide console calls
           disableConsoleOutput: true,
-          // Self-defending: resists reformatting
-          selfDefending: true,
+          selfDefending: false,
           // Keep source maps off in prod
           sourceMap: false,
-          // Performance balance: don't go too heavy
-          numbersToExpressions: true,
+          numbersToExpressions: false,
           simplify: true,
-          splitStrings: true,
-          splitStringsChunkLength: 8,
-          transformObjectKeys: true,
+          splitStrings: false,
+          transformObjectKeys: false,
           unicodeEscapeSequence: false,
         },
       }),
@@ -69,7 +65,7 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       proxy: {
         '/api': {
-          target: 'http://127.0.0.1:3001',
+          target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:3001',
           changeOrigin: true,
         },
       },

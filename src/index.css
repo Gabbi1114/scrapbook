@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Caveat:wght@400..700&family=Indie+Flower&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Oswald:wght@200..700&family=Pacifico&family=Patrick+Hand&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&family=Rubik+Wet+Paint&display=swap");
+/* Google Fonts are loaded asynchronously from index.html (preconnect + async
+   stylesheet) so the CSS bundle never blocks first paint on fonts. */
 @import "tailwindcss";
 
 /* Add matching .woff2 files under public/fonts/ (see font-family names below). */
@@ -1323,4 +1324,117 @@ img.interactive {
   63% {
     transform: rotate(-360deg);
   }
+}
+
+
+/* ─── Design polish pass ────────────────────────────────────────────────────
+   Ambient backdrop, toolbar micro-interactions, loader branding, scrollbars.
+   Purely additive: no existing selector is modified.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Richer default backdrop behind the book when no custom background is set:
+   soft top light, gentle vignette. Sits under all content (z-0 vs z-10). */
+.app-ambient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(255, 255, 255, 0.12), transparent 60%),
+    radial-gradient(140% 110% at 50% 120%, rgba(0, 0, 0, 0.3), transparent 60%);
+}
+
+/* Soft ground shadow that anchors the book to the backdrop (pure gradient,
+   no blur filter — zero GPU surface cost). */
+.book-ground-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: -5%;
+  z-index: -1;
+  width: 88%;
+  height: 11%;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    rgba(0, 0, 0, 0.34),
+    transparent 72%
+  );
+  pointer-events: none;
+}
+
+/* Micro-interactions for the floating toolbars and page-nav buttons. */
+.toolbar-glass button {
+  transition:
+    transform 160ms cubic-bezier(0.2, 0.8, 0.3, 1.2),
+    background-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+@media (hover: hover) {
+  .toolbar-glass button:not(:disabled):hover {
+    transform: translateY(-2px);
+  }
+  .nav-fab:not(:disabled):hover {
+    transform: translateY(-50%) scale(1.08);
+  }
+}
+.toolbar-glass button:not(:disabled):active {
+  transform: scale(0.92);
+  transition-duration: 80ms;
+}
+.nav-fab:not(:disabled):active {
+  transform: translateY(-50%) scale(0.94);
+}
+.toolbar-glass button:focus-visible,
+.nav-fab:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+/* Loader branding + refined progress bar. */
+.wizard-loader .brand {
+  margin-top: 30px;
+  font-family: "Caveat", "Segoe Script", cursive;
+  font-size: 38px;
+  line-height: 1.15;
+  color: #e2e8f0;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+.wizard-loader .brand-sub {
+  margin-top: 2px;
+  font-family: "Nunito", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.55);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-align: center;
+}
+.wizard-loader .progress.progress--polished {
+  margin-top: 34px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.wizard-loader .progress.progress--polished .progress-fill {
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7dd3fc, #c4b5fd);
+  box-shadow: 0 0 14px rgba(165, 180, 252, 0.5);
+}
+
+/* Slim, unobtrusive scrollbars (editor panel and overlays). */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.35);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 113, 108, 0.55);
 }

@@ -45,7 +45,13 @@ import {
   BOOK_STAGE_WIDTH,
   useBookStageScale,
 } from "./bookStage";
-import { EditorPanelBody, type EditorAccordionId } from "./EditorPanelBody";
+import type { EditorAccordionId } from "./EditorPanelBody";
+
+// Code-split the editor panel: share-link viewers never open the editor,
+// so its chunk should not be part of the initial download.
+const EditorPanelBody = React.lazy(() =>
+  import("./EditorPanelBody").then((m) => ({ default: m.EditorPanelBody })),
+);
 import {
   DEMO_SHARE_ID,
   demoImageVariant,
@@ -1281,7 +1287,9 @@ function LoadingScene({
           </div>
         </div>
       </div>
-      <div className="progress">
+      <div className="brand">Бяцхан ном</div>
+      <div className="brand-sub">little book of memories</div>
+      <div className="progress progress--polished">
         <div className="progress-fill" style={{ width: `${progress}%` }} />
       </div>
       <div className="noise" />
@@ -1500,20 +1508,26 @@ export default function App() {
     const startExit = window.setTimeout(() => {
       setIsLoadingSceneExiting(true);
     }, LOADING_PROGRESS_SETTLE_MS);
-    const hide = window.setTimeout(
-      () => setIsLoadingSceneVisible(false),
-      LOADING_PROGRESS_SETTLE_MS + LOADING_SCENE_EXIT_MS,
-    );
-    return () => {
-      window.clearTimeout(startExit);
-      window.clearTimeout(hide);
-    };
+    return () => window.clearTimeout(startExit);
   }, [
     isInitialBootstrapDone,
     isWindowLoaded,
     isLoadingSceneVisible,
     isLoadingSceneExiting,
   ]);
+
+  // Unmount the loader after its exit transition. This must live in its own
+  // effect: scheduling it alongside startExit self-cancels, because the
+  // isLoadingSceneExiting flip re-runs that effect and its cleanup clears the
+  // pending hide timer — leaving the invisible loader animating forever.
+  useEffect(() => {
+    if (!isLoadingSceneExiting || !isLoadingSceneVisible) return;
+    const hide = window.setTimeout(
+      () => setIsLoadingSceneVisible(false),
+      LOADING_SCENE_EXIT_MS,
+    );
+    return () => window.clearTimeout(hide);
+  }, [isLoadingSceneExiting, isLoadingSceneVisible]);
 
   // FIX-C/J (demo): After the loading scene exits, activate demo diagnostics
   // and strip idle will-change from all elements. Both helpers are no-ops on
@@ -1567,7 +1581,15 @@ export default function App() {
     };
   }, [tryStartBackgroundMusic]);
 
+  const directAudioUrl = isDirectAudioUrl(backgroundMusicUrl)
+    ? backgroundMusicUrl.trim()
+    : "";
+  const ytVideoId = directAudioUrl ? null : parseYouTubeVideoId(backgroundMusicUrl);
+
   useEffect(() => {
+    // Load the YouTube iframe API only when this book actually uses a
+    // YouTube track — most visitors never need the ~500KB player script.
+    if (!ytVideoId) return;
     if (window.YT?.Player) {
       setIsYtApiReady(true);
       return;
@@ -1586,12 +1608,7 @@ export default function App() {
       s.src = "https://www.youtube.com/iframe_api";
       document.head.appendChild(s);
     }
-  }, []);
-
-  const directAudioUrl = isDirectAudioUrl(backgroundMusicUrl)
-    ? backgroundMusicUrl.trim()
-    : "";
-  const ytVideoId = directAudioUrl ? null : parseYouTubeVideoId(backgroundMusicUrl);
+  }, [ytVideoId]);
 
   useEffect(() => {
     const audio = directAudioRef.current;
@@ -1895,7 +1912,9 @@ export default function App() {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w < 8 || h < 8) return;
-      const fill = preferLiteEffects ? 0.995 : 1.01;
+      // Slightly under-fill so the spread never touches the viewport edge —
+      // the small margin reads as intentional framing rather than clipping.
+      const fill = preferLiteEffects ? 0.955 : 0.97;
       const s = Math.min(w / BOOK_STAGE_WIDTH, h / BOOK_STAGE_HEIGHT) * fill;
       setStageScale(Math.max(0.08, Math.min(s, 4)));
     };
@@ -1988,13 +2007,41 @@ export default function App() {
     (async () => {
       try {
         if (sid) {
+          const isDemo = isSandboxDemoShareId(sid);
+          if (isDemo) {
+            // Demo content is built entirely on the client, so never block it
+            // on the share API: render instantly and fetch quota info later.
+            // FIX-A (demo): Use DPR-aware width cap instead of hardcoded 1100/1400.
+            // getDemoImageMaxWidth() computes: min(pageLogicalWidth × DPR, 1100 on iOS / 1400 on desktop).
+            // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
+            const demoAssetMaxWidth = getDemoImageMaxWidth();
+            const displayPages = buildDemoBirthdayPages(demoAssetMaxWidth);
+            setShareLinkLoadError(null);
+            setCurrentShareId(sid);
+            setPages(displayPages);
+            setBackgroundMusicUrl(DEMO_LIGHT_MUSIC_URL);
+            setAppBackgroundImageUrl(
+              demoCdnBackgroundAt(99, demoAssetMaxWidth),
+            );
+            setShareEditUntilIso(getDemoEditUntilIso(sid));
+            setSharedViewMode(true);
+            setHistory([displayPages]);
+            setHistoryIndex(0);
+            setShareHint(null);
+            window.setTimeout(() => logDemoDiagnostics("demo load"), 0);
+            void fetchSharedBundleWithAttempts(
+              sid,
+              1,
+              SHARE_FETCH_TIMEOUT_MS,
+            ).then((bundle) => {
+              if (!cancelled && bundle) {
+                setShareStorageUsedBytes(bundle.mediaBytes);
+              }
+            });
+            return;
+          }
           setShareHint(
-            isSandboxDemoShareId(sid)
-              ? ui("Demo scrapbook ачаалж байна...", "Loading demo scrapbook...")
-              : ui(
-                  "Линкний өгөгдлийг ачаалж байна...",
-                  "Loading link data...",
-                ),
+            ui("Линкний өгөгдлийг ачаалж байна...", "Loading link data..."),
           );
           const bundle = await fetchSharedBundleWithAttempts(
             sid,
@@ -2003,41 +2050,17 @@ export default function App() {
           );
           if (cancelled || !applyShareBundleRef.current) return;
           if (bundle) {
-            const isDemo = isSandboxDemoShareId(sid);
-            // FIX-A (demo): Use DPR-aware width cap instead of hardcoded 1100/1400.
-            // getDemoImageMaxWidth() computes: min(pageLogicalWidth Ã— DPR, 1100 on iOS / 1400 on desktop).
-            // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
-            const demoAssetMaxWidth = isDemo
-              ? getDemoImageMaxWidth()
-              : isIosWebkitDevice()
-                ? 1100
-                : 1400;
-            const displayPages = isDemo
-              ? buildDemoBirthdayPages(demoAssetMaxWidth)
-              : bundle.pages;
-            const displayAppBackground =
-              (isDemo
-                ? demoCdnBackgroundAt(99, demoAssetMaxWidth)
-                : bundle.appBackgroundImage) || "";
-            const displayMusicUrl = isDemo
-              ? DEMO_LIGHT_MUSIC_URL
-              : bundle.musicUrl || "";
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
-            setPages(displayPages);
-            setBackgroundMusicUrl(displayMusicUrl);
-            setAppBackgroundImageUrl(displayAppBackground);
-            setShareEditUntilIso(
-              isDemo ? getDemoEditUntilIso(sid) : bundle.editUntil,
-            );
+            setPages(bundle.pages);
+            setBackgroundMusicUrl(bundle.musicUrl || "");
+            setAppBackgroundImageUrl(bundle.appBackgroundImage || "");
+            setShareEditUntilIso(bundle.editUntil);
             setShareStorageUsedBytes(bundle.mediaBytes);
             setSharedViewMode(true);
-            setHistory([displayPages]);
+            setHistory([bundle.pages]);
             setHistoryIndex(0);
             setShareHint(null);
-            if (isDemo) {
-              window.setTimeout(() => logDemoDiagnostics("demo load"), 0);
-            }
           } else {
             setShareLinkLoadError("failed");
             setShareHint(null);
@@ -3001,7 +3024,7 @@ export default function App() {
         </div>
       )}
       <div
-        className={`h-dvh font-sans flex touch-auto flex-col overflow-hidden ${isDemoShare ? "demo-route relative" : ""}`}
+        className={`h-dvh font-sans flex touch-auto flex-col overflow-hidden relative ${!appBackgroundImage ? "app-ambient" : ""} ${isDemoShare ? "demo-route" : ""}`}
         style={appShellStyle}
       >
         <div className="fixed right-3 top-3 z-80 flex overflow-hidden rounded-full border border-white/35 bg-black/35 p-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-md">
@@ -3139,7 +3162,7 @@ export default function App() {
                 type="button"
                 onClick={turnPrev}
                 disabled={currentLeaf === 0}
-                className={`absolute left-2 top-1/2 -translate-y-1/2 sm:left-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
+                className={`nav-fab absolute left-2 top-1/2 -translate-y-1/2 sm:left-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
                   preferLiteEffects || isDemoShare
                     ? "demo-frosted bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
@@ -3159,12 +3182,27 @@ export default function App() {
                     style={{
                       width: BOOK_STAGE_WIDTH * stageScale,
                       height: BOOK_STAGE_HEIGHT * stageScale,
-                      transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${userZoom})`,
+                      // Closed book (front/back cover) only fills half the
+                      // spread stage, so nudge the stage a quarter width to
+                      // keep the visible cover optically centered.
+                      transform: `translate(${
+                        panOffset.x +
+                        (isEditing || userZoom !== 1
+                          ? 0
+                          : currentLeaf === 0
+                            ? -(BOOK_STAGE_WIDTH * stageScale) / 4
+                            : currentLeaf === totalLeaves
+                              ? (BOOK_STAGE_WIDTH * stageScale) / 4
+                              : 0)
+                      }px, ${panOffset.y}px) scale(${userZoom})`,
                       transformOrigin: "center center",
                       transition:
-                        userZoom === 1 ? "transform 0.25s ease" : "none",
+                        userZoom === 1
+                          ? "transform 0.45s cubic-bezier(0.25, 0.8, 0.35, 1)"
+                          : "none",
                     }}
                   >
+                    <div className="book-ground-shadow" aria-hidden />
                     <div
                       className="book-perspective absolute left-0 top-0 preserve-3d"
                       style={{
@@ -3250,7 +3288,7 @@ export default function App() {
                 type="button"
                 onClick={turnNext}
                 disabled={currentLeaf === totalLeaves}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 sm:right-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
+                className={`nav-fab absolute right-2 top-1/2 -translate-y-1/2 sm:right-3 shrink-0 w-10 h-10 sm:w-12 sm:h-12 text-white rounded-full flex items-center justify-center disabled:opacity-0 disabled:pointer-events-none transition-all z-20 ${
                   preferLiteEffects || isDemoShare
                     ? "demo-frosted bg-white/35 hover:bg-white/45"
                     : "bg-white/20 backdrop-blur-sm hover:bg-white/30"
@@ -3281,7 +3319,7 @@ export default function App() {
                 </p>
               )}
               <div
-                className={`px-6 py-3 rounded-full flex items-center gap-4 border border-white/20 ${
+                className={`toolbar-glass px-6 py-3 rounded-full flex items-center gap-4 border border-white/20 ${
                   preferLiteEffects || isDemoShare
                     ? "demo-frosted bg-white/20 shadow-lg"
                     : "bg-white/10 backdrop-blur-md shadow-xl"
@@ -3455,6 +3493,13 @@ export default function App() {
                 className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-2 md:p-4"
                 data-allow-native-scroll="true"
               >
+                <React.Suspense
+                  fallback={
+                    <div className="flex items-center justify-center py-8">
+                      <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
+                    </div>
+                  }
+                >
                 <EditorPanelBody
                   selectedPageId={selectedPageId}
                   isDemoMode={isDemoShare}
@@ -3506,6 +3551,7 @@ export default function App() {
                     updatePagesWithHistory(newPages);
                   }}
                 />
+                </React.Suspense>
               </div>
             </div>
           )}
