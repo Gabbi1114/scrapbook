@@ -2992,28 +2992,41 @@ export default function App() {
   return (
     <>
       {shareLinkLoadError && (
+        // Full-screen block, not just a dismissible banner — a link that
+        // failed to load (wrong id, expired, or the create call never
+        // actually reached the server) must not leave a usable blank editor
+        // sitting underneath it. Nothing beneath this is reachable while it
+        // shows: no accidental "editing" a book that was never really there
+        // to save to, and no way for an invalid id to look like it worked.
         <div
-          className="fixed left-0 right-0 top-0 z-120 flex items-center justify-center gap-3 border-b border-amber-700/40 bg-amber-950/95 px-3 py-2 text-center text-sm text-amber-50 shadow-md"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-neutral-950/95 backdrop-blur-sm px-6"
           role="alert"
         >
-          <span className="min-w-0 flex-1">
-            {shareLinkLoadError === "timeout"
-              ? ui(
-                  "Холболт удаан байна. Дахин оролдоно уу.",
-                  "The connection is slow. Please try again.",
-                )
-              : ui(
-                  "Хадгалагдсан номыг ачаалж чадсангүй. Интернетээ шалгана уу.",
-                  "Could not load the saved book. Please check your internet connection.",
-                )}
-          </span>
-          <button
-            type="button"
-            onClick={retryShareBootstrap}
-            className="shrink-0 rounded-lg bg-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100"
-          >
-            {ui("Дахин ачаалах", "Reload")}
-          </button>
+          <div className="max-w-sm w-full text-center">
+            <p className="text-white font-semibold text-lg mb-2">
+              {shareLinkLoadError === "timeout"
+                ? ui("Холболт удаан байна", "The connection is slow")
+                : ui("Энэ линк ажиллахгүй байна", "This link isn't working")}
+            </p>
+            <p className="text-white/60 text-sm leading-relaxed mb-6">
+              {shareLinkLoadError === "timeout"
+                ? ui(
+                    "Дахин ачаалж үзнэ үү. Хэрэв энэ нь захиалгаас ирсэн линк бол 56 Moments-тэй холбогдоно уу.",
+                    "Try reloading. If this link came from an order, please contact 56 Moments for help.",
+                  )
+                : ui(
+                    "Энэ линк хүчингүй эсвэл дуусгавар болсон байна. Хэрэв энэ нь захиалгаас ирсэн бол 56 Moments-тэй холбогдоно уу.",
+                    "This link is invalid or has expired. If it came from an order, please contact 56 Moments for help.",
+                  )}
+            </p>
+            <button
+              type="button"
+              onClick={retryShareBootstrap}
+              className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 hover:bg-white/90"
+            >
+              {ui("Дахин ачаалах", "Try again")}
+            </button>
+          </div>
         </div>
       )}
       <div
