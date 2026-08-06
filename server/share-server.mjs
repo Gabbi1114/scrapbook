@@ -119,6 +119,21 @@ async function loadShareOrNull(id) {
   }
 }
 
+async function persistShare(id, payload) {
+  const file = shareFilePath(id);
+  const text = JSON.stringify(payload);
+  fs.writeFileSync(file, text, "utf8");
+  if (!r2) return;
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: `shares/${path.basename(id)}.json`,
+      ContentType: "application/json",
+      Body: text,
+    }),
+  );
+}
+
 function currentMediaBytes(shareData) {
   const n = Number(shareData?.mediaBytes || 0);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
