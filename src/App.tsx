@@ -2009,8 +2009,8 @@ export default function App() {
         if (sid) {
           const isDemo = isSandboxDemoShareId(sid);
           if (isDemo) {
-            // Demo content is built entirely on the client, so never block it
-            // on the share API: render instantly and fetch quota info later.
+            // Demo content is built entirely on the client — never touches
+            // the share API at all, so it renders instantly.
             // FIX-A (demo): Use DPR-aware width cap instead of hardcoded 1100/1400.
             // getDemoImageMaxWidth() computes: min(pageLogicalWidth × DPR, 1100 on iOS / 1400 on desktop).
             // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
@@ -2028,16 +2028,9 @@ export default function App() {
             setHistory([displayPages]);
             setHistoryIndex(0);
             setShareHint(null);
+            // Genuinely local-only now — no network call at all, not even to
+            // fetch quota info. setShareStorageUsedBytes already defaults to 0.
             window.setTimeout(() => logDemoDiagnostics("demo load"), 0);
-            void fetchSharedBundleWithAttempts(
-              sid,
-              1,
-              SHARE_FETCH_TIMEOUT_MS,
-            ).then((bundle) => {
-              if (!cancelled && bundle) {
-                setShareStorageUsedBytes(bundle.mediaBytes);
-              }
-            });
             return;
           }
           setShareHint(

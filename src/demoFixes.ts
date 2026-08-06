@@ -1,4 +1,7 @@
-export const DEMO_SHARE_ID = "pfM_LkLxbqxN7TUX";
+// Public, memorable — scrapbook.56moments.store/?share=test. Real share ids
+// are always randomBytes(12).toString("base64url") (16 chars from the
+// server), so "test" can never collide with a real paid one.
+export const DEMO_SHARE_ID = "test";
 
 declare global {
   interface Window {
