@@ -2876,8 +2876,18 @@ export default function App() {
   // currentLeaf 0: left = null, right = 0
   // currentLeaf 1: left = 1, right = 2
   // currentLeaf 2: left = 3, right = 4
+  // "Delete this page" removes exactly one page, not a pair, so pages.length
+  // can be odd — at the final currentLeaf, `currentLeaf * 2 - 1` then points
+  // one past the end of an odd-length array (pages[pages.length], undefined),
+  // which made the last page render as nothing at all while editing. The
+  // true last page is always pages[pages.length - 1], whether the count
+  // ended up odd or even.
   const visibleLeftPageId =
-    currentLeaf === 0 ? null : pages[currentLeaf * 2 - 1]?.id;
+    currentLeaf === 0
+      ? null
+      : currentLeaf === totalLeaves
+        ? pages[pages.length - 1]?.id
+        : pages[currentLeaf * 2 - 1]?.id;
   const visibleRightPageId =
     currentLeaf === totalLeaves ? null : pages[currentLeaf * 2]?.id;
 
