@@ -134,6 +134,52 @@ async function persistShare(id, payload) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Self-heal: if a share isn't on disk (or R2) yet, ask 56moments.store's main
+// server whether this id was ever actually issued (paid for) before creating
+// it here. Covers two real gaps: the background /ensure call that runs right
+// after an order is approved can still be mid-retry (cold Render backend)
+// when the customer clicks the link, or it can have exhausted its retries
+// entirely — either way, without this, a link nobody did anything wrong to
+// just 404s forever with "invalid or expired". A random unpaid id still gets
+// rejected, since verify only returns true for ids that exist in a real order.
+// ---------------------------------------------------------------------------
+const MAIN_STORE_API_BASE = (
+  process.env.MAIN_STORE_API_BASE || "https://56moments.store"
+).replace(/\/$/, "");
+
+function defaultScrapbookPayload() {
+  return {
+    v: 1,
+    pages: [
+      { id: "p1", background: "bg-rose-100", pattern: "pattern-polka", elements: [] },
+    ],
+  };
+}
+
+async function selfHealShare(id) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const r = await fetch(
+      `${MAIN_STORE_API_BASE}/api/webcard-verify/${encodeURIComponent(id)}`,
+      { signal: controller.signal },
+    );
+    clearTimeout(timer);
+    if (!r.ok) return null;
+    const { valid } = await r.json();
+    if (!valid) return null;
+  } catch (e) {
+    clearTimeout(timer);
+    console.warn(`Self-heal verify failed for ${id}:`, e.message);
+    return null;
+  }
+  const payload = { ...defaultScrapbookPayload(), mediaBytes: 0 };
+  await persistShare(id, payload);
+  console.log(`Self-healed share ${id} (verified with main store, was never created here)`);
+  return { file: shareFilePath(id), data: payload };
+}
+
 function currentMediaBytes(shareData) {
   const n = Number(shareData?.mediaBytes || 0);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
@@ -501,7 +547,8 @@ app.post("/api/share/:id/ensure", async (req, res) => {
 });
 
 app.get("/api/share/:id", async (req, res) => {
-  const record = await loadShareOrNull(req.params.id);
+  let record = await loadShareOrNull(req.params.id);
+  if (!record) record = await selfHealShare(req.params.id);
   if (!record) {
     return res.status(404).json({ error: "not found" });
   }
