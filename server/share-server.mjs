@@ -42,7 +42,7 @@ const STUDIO_ROOT_SHARE_ID = (
 
 const hasR2Config =
   R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET;
-const MAX_SHARE_BYTES = 10 * 1024 * 1024; // matches box/book's per-share storage cap
+const MAX_SHARE_BYTES = 15 * 1024 * 1024; // matches box/book's per-share storage cap
 const DEFAULT_EDIT_DAYS = 30; // matches book's default edit window
 const MAX_VIDEO_SECONDS = 60;
 const execFileAsync = promisify(execFile);
@@ -464,7 +464,7 @@ app.post("/api/share", async (req, res) => {
     const jsonBytes = pagesJsonBytes(pages);
     if (jsonBytes > MAX_SHARE_BYTES) {
       return res.status(413).json({
-        error: "Share is too large. Limit is 10MB per link.",
+        error: "Share is too large. Limit is 15MB per link.",
       });
     }
     const payload = {
@@ -522,7 +522,7 @@ app.post("/api/share/:id/ensure", async (req, res) => {
     const jsonBytes = pagesJsonBytes(pages);
     if (jsonBytes > MAX_SHARE_BYTES) {
       return res.status(413).json({
-        error: "Share is too large. Limit is 10MB per link.",
+        error: "Share is too large. Limit is 15MB per link.",
       });
     }
     const payload = {
@@ -600,7 +600,7 @@ app.put("/api/share/:id", async (req, res) => {
     const jsonBytes = pagesJsonBytes(pages);
     if (jsonBytes + mediaBytes > MAX_SHARE_BYTES) {
       return res.status(413).json({
-        error: "Share is too large. Limit is 10MB per link.",
+        error: "Share is too large. Limit is 15MB per link.",
       });
     }
     const payload = {
@@ -722,7 +722,7 @@ app.post(
       const jsonBytes = pagesJsonBytes(record.data.pages || []);
       if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
         return res.status(413).json({
-          error: "Storage limit reached (10MB per link).",
+          error: "Storage limit reached (15MB per link).",
         });
       }
 
