@@ -132,8 +132,17 @@ const DEMO_TEXT_EFFECTS = [
   { name: "Glow", value: "glow" },
 ];
 
+// GIPHY's shared public beta key is rate-limited/blocked in practice (403) —
+// set VITE_GIPHY_API_KEY to a real key from developers.giphy.com if you want
+// this path to actually return results; otherwise it fails fast and falls
+// through to Tenor below, same as always.
 const GIPHY_PUBLIC_BETA_KEY = "dc6zaTOxFJmzC";
-const TENOR_PUBLIC_KEY = "LIVDSRZULELA";
+// Tenor's v1 API (g.tenor.com/v1) was shut down after Google's acquisition —
+// every request 403s now, which is why GIF search stopped working entirely
+// once GIPHY also started failing. v2 needs a real Google Cloud API key
+// (console.cloud.google.com → enable "Tenor API" → create an API key, free
+// tier) set as VITE_TENOR_API_KEY; there is no working public fallback key.
+const TENOR_PUBLIC_KEY = "";
 
 type GifPick = {
   id: string;
@@ -347,30 +356,32 @@ export function EditorPanelBody({
           .filter((v): v is GifPick => v !== null);
       }
 
-      // GIPHY public beta key is often blocked; use Tenor as fallback without forcing API signup.
+      // GIPHY's public beta key is blocked; use Tenor as fallback. Tenor v2
+      // (v1 was shut down after Google's acquisition) needs a real Google
+      // Cloud API key and nests format URLs under media_formats instead of
+      // a media[] array — see VITE_TENOR_API_KEY above.
       if (picks.length === 0) {
         const tenorKey =
           (import.meta.env.VITE_TENOR_API_KEY || "").trim() || TENOR_PUBLIC_KEY;
         const tenorUrl =
-          `https://g.tenor.com/v1/search?key=${encodeURIComponent(tenorKey)}` +
-          `&q=${encodeURIComponent(q)}&limit=12&media_filter=minimal&contentfilter=high`;
+          `https://tenor.googleapis.com/v2/search?key=${encodeURIComponent(tenorKey)}` +
+          `&q=${encodeURIComponent(q)}&limit=12&media_filter=tinygif,gif&contentfilter=high`;
         const tenorRes = await fetch(tenorUrl);
         if (tenorRes.ok) {
           const tenor = (await tenorRes.json()) as {
             results?: Array<{
               id?: string;
               title?: string;
-              media?: Array<{
+              media_formats?: {
                 gif?: { url?: string };
                 tinygif?: { url?: string };
-              }>;
+              };
             }>;
           };
           picks = (tenor.results || [])
             .map((gif) => {
-              const media0 = gif.media?.[0];
-              const fullUrl = media0?.gif?.url || "";
-              const previewUrl = media0?.tinygif?.url || fullUrl;
+              const fullUrl = gif.media_formats?.gif?.url || "";
+              const previewUrl = gif.media_formats?.tinygif?.url || fullUrl;
               if (!gif.id || !previewUrl || !fullUrl) return null;
               return {
                 id: `tenor-${gif.id}`,

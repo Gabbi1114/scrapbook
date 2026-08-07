@@ -42,7 +42,8 @@ const STUDIO_ROOT_SHARE_ID = (
 
 const hasR2Config =
   R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET;
-const MAX_SHARE_BYTES = 15 * 1024 * 1024;
+const MAX_SHARE_BYTES = 10 * 1024 * 1024; // matches box/book's per-share storage cap
+const DEFAULT_EDIT_DAYS = 30; // matches book's default edit window
 const MAX_VIDEO_SECONDS = 60;
 const execFileAsync = promisify(execFile);
 const upload = multer({
@@ -174,7 +175,7 @@ async function selfHealShare(id) {
     console.warn(`Self-heal verify failed for ${id}:`, e.message);
     return null;
   }
-  const payload = { ...defaultScrapbookPayload(), mediaBytes: 0 };
+  const payload = { ...defaultScrapbookPayload(), mediaBytes: 0, editDays: DEFAULT_EDIT_DAYS, editUntil: null };
   await persistShare(id, payload);
   console.log(`Self-healed share ${id} (verified with main store, was never created here)`);
   return { file: shareFilePath(id), data: payload };
@@ -332,9 +333,10 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
     };
   }
 
+  // Matches box/book's compression settings: 1920px max side, AVIF, effort 4.
   const img = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await img.metadata();
-  const maxSide = options.hd ? 2560 : 2200;
+  const maxSide = 1920;
   const resized = img.resize({
     width: meta.width && meta.width > maxSide ? maxSide : undefined,
     height: meta.height && meta.height > maxSide ? maxSide : undefined,
@@ -342,23 +344,13 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
     withoutEnlargement: true,
     kernel: sharp.kernel.lanczos3,
   });
-  if (options.preferAvif) {
-    const avif = await resized
-      .avif({ quality: options.hd ? 70 : 62, effort: 4 })
-      .toBuffer();
-    return {
-      body: avif,
-      contentType: "image/avif",
-      ext: ".avif",
-    };
-  }
-  const webp = await resized
-    .webp({ quality: options.hd ? 86 : 84, effort: 4 })
+  const avif = await resized
+    .avif({ quality: options.hd ? 65 : 62, effort: 4 })
     .toBuffer();
   return {
-    body: webp,
-    contentType: "image/webp",
-    ext: ".webp",
+    body: avif,
+    contentType: "image/avif",
+    ext: ".avif",
   };
 }
 
@@ -464,20 +456,15 @@ app.post("/api/share", async (req, res) => {
       Number.isFinite(envMax) && envMax > 0
         ? Math.min(Math.floor(envMax), 3650)
         : 365;
-    let editUntil = null;
-    if (
-      typeof editDays === "number" &&
-      Number.isFinite(editDays) &&
-      editDays > 0
-    ) {
-      const days = Math.min(Math.max(1, Math.floor(editDays)), maxDays);
-      editUntil = new Date(Date.now() + days * 86400000).toISOString();
-    }
+    const days =
+      typeof editDays === "number" && Number.isFinite(editDays) && editDays > 0
+        ? Math.min(Math.max(1, Math.floor(editDays)), maxDays)
+        : DEFAULT_EDIT_DAYS;
     const id = randomBytes(12).toString("base64url");
     const jsonBytes = pagesJsonBytes(pages);
     if (jsonBytes > MAX_SHARE_BYTES) {
       return res.status(413).json({
-        error: "Share is too large. Limit is 15MB per link.",
+        error: "Share is too large. Limit is 10MB per link.",
       });
     }
     const payload = {
@@ -490,10 +477,12 @@ app.post("/api/share", async (req, res) => {
       ...(typeof appBackgroundImage === "string" && appBackgroundImage.trim()
         ? { appBackgroundImage: appBackgroundImage.trim() }
         : {}),
-      ...(editUntil ? { editUntil } : {}),
+      editDays: days,
+      // Starts counting down from first open, not creation — see GET below.
+      editUntil: null,
     };
     await persistShare(id, payload);
-    res.json({ id, ...(editUntil ? { editUntil } : {}) });
+    res.json({ id, editUntil: null });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });
@@ -517,14 +506,23 @@ app.post("/api/share/:id/ensure", async (req, res) => {
     if (existing) {
       return res.json({ ok: true, existed: true });
     }
-    const { v, pages, musicUrl, appBackgroundImage } = req.body;
+    const { v, pages, musicUrl, appBackgroundImage, editDays } = req.body;
     if (v !== 1 || !Array.isArray(pages) || pages.length === 0) {
       return res.status(400).json({ error: "Expected { v: 1, pages: [...] }" });
     }
+    const envMax = Number(process.env.SHARE_MAX_EDIT_DAYS);
+    const maxDays =
+      Number.isFinite(envMax) && envMax > 0
+        ? Math.min(Math.floor(envMax), 3650)
+        : 365;
+    const days =
+      typeof editDays === "number" && Number.isFinite(editDays) && editDays > 0
+        ? Math.min(Math.max(1, Math.floor(editDays)), maxDays)
+        : DEFAULT_EDIT_DAYS;
     const jsonBytes = pagesJsonBytes(pages);
     if (jsonBytes > MAX_SHARE_BYTES) {
       return res.status(413).json({
-        error: "Share is too large. Limit is 15MB per link.",
+        error: "Share is too large. Limit is 10MB per link.",
       });
     }
     const payload = {
@@ -537,6 +535,9 @@ app.post("/api/share/:id/ensure", async (req, res) => {
       ...(typeof appBackgroundImage === "string" && appBackgroundImage.trim()
         ? { appBackgroundImage: appBackgroundImage.trim() }
         : {}),
+      editDays: days,
+      // Starts counting down from first open, not creation — see GET below.
+      editUntil: null,
     };
     await persistShare(id, payload);
     res.json({ ok: true, existed: false });
@@ -551,6 +552,15 @@ app.get("/api/share/:id", async (req, res) => {
   if (!record) record = await selfHealShare(req.params.id);
   if (!record) {
     return res.status(404).json({ error: "not found" });
+  }
+  // First view starts the edit-window countdown, not creation time — so a
+  // creator who hasn't shared the link yet isn't burning down their own
+  // window. Matches box/book's deferred-start behavior.
+  if (record.data.editUntil == null && record.data.editDays != null) {
+    record.data.editUntil = new Date(
+      Date.now() + record.data.editDays * 86400000,
+    ).toISOString();
+    await persistShare(req.params.id, record.data);
   }
   res.type("json").send(JSON.stringify(record.data));
 });
@@ -590,7 +600,7 @@ app.put("/api/share/:id", async (req, res) => {
     const jsonBytes = pagesJsonBytes(pages);
     if (jsonBytes + mediaBytes > MAX_SHARE_BYTES) {
       return res.status(413).json({
-        error: "Share is too large. Limit is 15MB per link.",
+        error: "Share is too large. Limit is 10MB per link.",
       });
     }
     const payload = {
@@ -609,6 +619,7 @@ app.put("/api/share/:id", async (req, res) => {
           : {}),
       mediaObjects: prunedMedia.mediaObjects,
       ...(editUntil ? { editUntil } : {}),
+      ...(typeof prev?.editDays === "number" ? { editDays: prev.editDays } : {}),
     };
     await persistShare(req.params.id, payload);
     res.json({
@@ -711,7 +722,7 @@ app.post(
       const jsonBytes = pagesJsonBytes(record.data.pages || []);
       if (jsonBytes + mediaBytes + converted.body.length > MAX_SHARE_BYTES) {
         return res.status(413).json({
-          error: "Storage limit reached (15MB per link).",
+          error: "Storage limit reached (10MB per link).",
         });
       }
 
