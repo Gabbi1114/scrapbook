@@ -45,13 +45,19 @@ import {
   BOOK_STAGE_WIDTH,
   useBookStageScale,
 } from "./bookStage";
-import type { EditorAccordionId } from "./EditorPanelBody";
+import { EditorPanelBody, type EditorAccordionId } from "./EditorPanelBody";
 
-// Code-split the editor panel: share-link viewers never open the editor,
-// so its chunk should not be part of the initial download.
-const EditorPanelBody = React.lazy(() =>
-  import("./EditorPanelBody").then((m) => ({ default: m.EditorPanelBody })),
-);
+// This used to be React.lazy()-loaded as its own chunk, since share-link
+// viewers never open the editor. But the production build runs through
+// vite-plugin-javascript-obfuscator (stringArrayRotate/stringArrayShuffle),
+// which corrupts Vite's chunk-URL lookup table for dynamically-imported
+// modules — the request ends up going to a URL with no hash and no
+// extension (e.g. /assets/EditorPanelBody instead of
+// /assets/EditorPanelBody-XXXX.js), which 200s into the SPA's index.html
+// fallback and throws a MIME-type error. Since this is the only lazy-loaded
+// chunk in the app, opening the editor was completely broken in production
+// for every real customer. A static import sidesteps the whole class of
+// bug — worth the small increase to the initial bundle size.
 import {
   DEMO_SHARE_ID,
   demoImageVariant,
