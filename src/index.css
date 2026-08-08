@@ -146,6 +146,13 @@ body {
   overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricprecision;
+  /* The <meta viewport user-scalable=no> tag alone doesn't reliably block
+     pinch-zoom anymore — modern iOS Safari ignores it for accessibility
+     reasons. Blocking it here at the CSS level means the whole PAGE (fixed
+     toolbars, the editor panel) can never be pinch-zoomed out of position,
+     while the book's own zoom control keeps working — that's canvas-scoped
+     pointer/wheel handling, unaffected by this. */
+  touch-action: pan-x pan-y;
 }
 
 /* ─── Text-selection fix ────────────────────────────────────────────────────

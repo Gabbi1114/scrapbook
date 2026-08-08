@@ -260,6 +260,7 @@ export function EditorPanelBody({
   deleteElement,
   removePage,
   addPagesPair,
+  onJumpToPage,
 }: {
   selectedPageId: string | null;
   isDemoMode?: boolean;
@@ -300,6 +301,10 @@ export function EditorPanelBody({
   deleteElement: (pageId: string, elementId: string) => void;
   removePage: (pageId: string) => void;
   addPagesPair: () => void;
+  /** Jumps straight to a page and opens it for editing — the explicit
+   *  alternative to flipping through with next/prev and clicking whichever
+   *  page happens to be visible. */
+  onJumpToPage: (pageId: string) => void;
 }) {
   const uiEnglish = language === "en";
   const [gifQuery, setGifQuery] = useState("love");
@@ -1278,6 +1283,33 @@ export function EditorPanelBody({
       />
       {openAccordion === "pages" && (
         <div className="mb-2 space-y-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3">
+          {/* Jump straight to any page — the explicit alternative to
+              flipping through with next/prev and hoping the right page is
+              the one currently visible in the spread. */}
+          <div className="grid grid-cols-4 gap-1.5">
+            {pages.map((page, i) => {
+              const hasContent = page.elements.length > 0;
+              const isActive = page.id === selectedPageId;
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => onJumpToPage(page.id)}
+                  title={hasContent ? (uiEnglish ? "Has content" : "Агуулгатай") : undefined}
+                  className={`relative rounded-lg border py-2 text-xs font-medium transition-colors ${
+                    isActive
+                      ? "border-rose-500 bg-rose-600 text-white"
+                      : "border-stone-200 bg-white text-stone-700 hover:bg-stone-100"
+                  }`}
+                >
+                  {i + 1}
+                  {hasContent && (
+                    <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
           <button
             type="button"
             onClick={() => removePage(selectedPageId)}

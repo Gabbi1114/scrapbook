@@ -1417,6 +1417,11 @@ export default function App() {
   const editorPanelRef = useRef<HTMLDivElement>(null);
   const editorPlacementRef = useRef(editorPlacement);
   const prevSelectedElementId = useRef<string | null>(null);
+  // Set by jumpToPage() right before it changes currentLeaf — the
+  // leaf-change effect below picks it up on its next run instead of
+  // defaulting to "whichever page ends up on the right", which would
+  // silently select the wrong page when the requested one lands on the left.
+  const pendingPageSelectionRef = useRef<string | null>(null);
   const ytPlayerRef = useRef<any>(null);
   const ytHostRef = useRef<HTMLDivElement | null>(null);
   const directAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -2516,6 +2521,23 @@ export default function App() {
     updatePagesWithHistory(newPages);
   };
 
+  // Jump straight to a page and open it for editing — the explicit
+  // alternative to flipping through with next/prev and clicking whichever
+  // page happens to be visible in the spread.
+  const jumpToPage = (pageId: string) => {
+    const idx = pages.findIndex((p) => p.id === pageId);
+    if (idx < 0) return;
+    // Covers both cases: jumping to a page on a different leaf (currentLeaf
+    // changes, the leaf-change effect picks this up on its next run) and
+    // jumping to the *other* page already on the current leaf (currentLeaf
+    // stays the same, so that effect never re-fires — this direct call is
+    // what actually selects it then).
+    pendingPageSelectionRef.current = pageId;
+    setSelectedPageId(pageId);
+    setCurrentLeaf(Math.ceil(idx / 2));
+    setSelectedElementId(null);
+  };
+
   const updatePageBackground = (pageId: string, bg: string) => {
     updatePagesWithHistory(
       pages.map((p) => (p.id === pageId ? { ...p, background: bg } : p)),
@@ -2911,11 +2933,22 @@ export default function App() {
   const visibleRightPageId =
     currentLeaf === totalLeaves ? null : pages[currentLeaf * 2]?.id;
 
-  // Set selected page to right page by default if available, else left
+  // Set selected page to right page by default if available, else left —
+  // unless jumpToPage() just requested a specific one explicitly.
   React.useEffect(() => {
     if (isEditing) {
-      if (visibleRightPageId) setSelectedPageId(visibleRightPageId);
-      else if (visibleLeftPageId) setSelectedPageId(visibleLeftPageId);
+      const pending = pendingPageSelectionRef.current;
+      if (
+        pending &&
+        (pending === visibleLeftPageId || pending === visibleRightPageId)
+      ) {
+        pendingPageSelectionRef.current = null;
+        setSelectedPageId(pending);
+      } else if (visibleRightPageId) {
+        setSelectedPageId(visibleRightPageId);
+      } else if (visibleLeftPageId) {
+        setSelectedPageId(visibleLeftPageId);
+      }
     } else {
       setSelectedPageId(null);
       setSelectedElementId(null);
@@ -3581,6 +3614,7 @@ export default function App() {
                   updatePagesWithHistory={updatePagesWithHistory}
                   deleteElement={deleteElement}
                   removePage={removePage}
+                  onJumpToPage={jumpToPage}
                   addPagesPair={() => {
                     const newPages = [...pages];
                     const backCover = newPages.pop();
