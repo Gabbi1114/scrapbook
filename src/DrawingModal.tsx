@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Eraser, Trash2, Undo2, X } from "lucide-react";
+import {
+  Check,
+  Circle,
+  Eraser,
+  Highlighter,
+  Paintbrush,
+  Pen,
+  Pencil,
+  SprayCan,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import type { Language } from "./i18n";
 
 const COLORS = [
@@ -16,29 +28,158 @@ const COLORS = [
 const CANVAS_W = 800;
 const CANVAS_H = 1200;
 
+type BrushType = "pen" | "pencil" | "brush" | "marker" | "spray" | "circle" | "eraser";
+
 interface Point {
   x: number;
   y: number;
 }
 
-interface Stroke {
-  points: Point[];
-  color: string;
-  size: number;
-  erase: boolean;
+const BRUSHES: { id: BrushType; icon: typeof Pen; labelMn: string; labelEn: string }[] = [
+  { id: "pen", icon: Pen, labelMn: "Гар үзэг", labelEn: "Pen" },
+  { id: "pencil", icon: Pencil, labelMn: "Харандаа", labelEn: "Pencil" },
+  { id: "brush", icon: Paintbrush, labelMn: "Зөөлөн зураас", labelEn: "Soft brush" },
+  { id: "marker", icon: Highlighter, labelMn: "Маркер", labelEn: "Marker" },
+  { id: "spray", icon: SprayCan, labelMn: "Спрэй", labelEn: "Spray" },
+  { id: "circle", icon: Circle, labelMn: "Тойрог", labelEn: "Circles" },
+  { id: "eraser", icon: Eraser, labelMn: "Арчигч", labelEn: "Eraser" },
+];
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+/** Ports book's PageEditor.jsx freehand brush algorithms (pen/pencil/soft
+ *  brush/marker/spray/circle/eraser) onto a plain 2D canvas. */
+function drawSegment(
+  ctx: CanvasRenderingContext2D,
+  from: Point,
+  to: Point,
+  opts: { type: BrushType; color: string; size: number; opacity: number },
+) {
+  const { type, color, size, opacity } = opts;
+  const [r, g, b] = hexToRgb(color);
+
+  if (type === "eraser") {
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineWidth = size * 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(0,0,0,1)";
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (type === "brush") {
+    // Soft painting brush — overlapping radial-gradient stamps build up color.
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const spacing = Math.max(1, size * 0.12);
+    const steps = Math.max(1, Math.ceil(dist / spacing));
+    ctx.save();
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      const rad = size * 0.9;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${opacity * 0.22})`);
+      grad.addColorStop(0.4, `rgba(${r},${g},${b},${opacity * 0.1})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (type === "spray") {
+    const density = Math.max(20, size * 2.5);
+    const radius = size * 2;
+    ctx.save();
+    for (let i = 0; i < density; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * radius;
+      ctx.fillStyle = `rgba(${r},${g},${b},${opacity * (0.35 + Math.random() * 0.65)})`;
+      ctx.beginPath();
+      ctx.arc(
+        to.x + Math.cos(ang) * d,
+        to.y + Math.sin(ang) * d,
+        Math.random() * size * 0.22 + 0.4,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (type === "circle") {
+    const minR = Math.max(0, size - 20);
+    const maxR = size + 20;
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.round(dist / maxR));
+    ctx.save();
+    for (let i = 0; i < steps; i++) {
+      const t = (i + 1) / steps;
+      const x = from.x + (to.x - from.x) * t;
+      const y = from.y + (to.y - from.y) * t;
+      const radius = (minR + Math.random() * (maxR - minR)) / 2;
+      const a = Math.random();
+      ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  // Line-based: pen / pencil / marker.
+  ctx.save();
+  ctx.lineCap = ctx.lineJoin = "round";
+  if (type === "marker") {
+    ctx.lineCap = "square";
+    ctx.lineWidth = size * 1.9;
+    ctx.strokeStyle = `rgba(${r},${g},${b},${opacity * 0.65})`;
+  } else if (type === "pencil") {
+    ctx.lineWidth = size * 0.85;
+    ctx.strokeStyle = `rgba(${r},${g},${b},${opacity * 0.88})`;
+    ctx.shadowColor = `rgba(${r},${g},${b},${opacity * 0.28})`;
+    ctx.shadowBlur = size * 0.55;
+  } else {
+    ctx.lineWidth = size;
+    ctx.strokeStyle = `rgba(${r},${g},${b},${opacity})`;
+  }
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /**
- * Freehand drawing tool. Draws on a transparent canvas so the result reads
- * as a sticker when inserted, then hands back a PNG File through the same
- * pipeline as an uploaded photo — no new element type needed.
+ * Freehand drawing tool. `background` renders the live page behind a
+ * transparent canvas so strokes land in context instead of on a blank
+ * square — the finished drawing is handed back as a PNG File through the
+ * same pipeline as an uploaded photo, so no new element type is needed.
  */
 export default function DrawingModal({
   language,
+  background,
   onCancel,
   onInsert,
 }: {
   language?: Language;
+  background?: React.ReactNode;
   onCancel: () => void;
   onInsert: (file: File) => void;
 }) {
@@ -46,87 +187,104 @@ export default function DrawingModal({
   const ui = (mn: string, en: string) => (uiEnglish ? en : mn);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const drawingRef = useRef<Stroke | null>(null);
+  const historyRef = useRef<ImageData[]>([]);
+  const lastPointRef = useRef<Point | null>(null);
+  const isDrawingRef = useRef(false);
+  const [strokeCount, setStrokeCount] = useState(0);
+
+  const [brush, setBrush] = useState<BrushType>("pen");
   const [color, setColor] = useState("#1c1917");
-  const [size, setSize] = useState(6);
-  const [erasing, setErasing] = useState(false);
+  const [size, setSize] = useState(10);
+  const [opacity, setOpacity] = useState(1);
 
-  const redraw = (list: Stroke[]) => {
+  const getCtx = () => canvasRef.current?.getContext("2d") ?? null;
+
+  const pushHistory = () => {
+    const ctx = getCtx();
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const stroke of list) {
-      if (stroke.points.length === 0) continue;
-      ctx.globalCompositeOperation = stroke.erase
-        ? "destination-out"
-        : "source-over";
-      ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.size;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      const [first, ...rest] = stroke.points;
-      ctx.moveTo(first.x, first.y);
-      if (rest.length === 0) {
-        ctx.lineTo(first.x + 0.01, first.y + 0.01);
-      }
-      for (const p of rest) ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-    }
-    ctx.globalCompositeOperation = "source-over";
+    if (!ctx || !canvas) return;
+    historyRef.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    if (historyRef.current.length > 30) historyRef.current.shift();
   };
-
-  useEffect(() => {
-    redraw(strokes);
-  }, [strokes]);
 
   const pointFromEvent = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * CANVAS_W;
-    const y = ((e.clientY - rect.top) / rect.height) * CANVAS_H;
-    return { x, y };
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * CANVAS_W,
+      y: ((e.clientY - rect.top) / rect.height) * CANVAS_H,
+    };
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ctx = getCtx();
+    if (!ctx) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const stroke: Stroke = {
-      points: [pointFromEvent(e)],
-      color,
-      size: erasing ? size * 3 : size,
-      erase: erasing,
-    };
-    drawingRef.current = stroke;
-    setStrokes((prev) => [...prev, stroke]);
+    pushHistory();
+    isDrawingRef.current = true;
+    const pt = pointFromEvent(e);
+    lastPointRef.current = pt;
+    drawSegment(ctx, pt, pt, { type: brush, color, size, opacity });
+    setStrokeCount((c) => c + 1);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const stroke = drawingRef.current;
-    if (!stroke) return;
-    stroke.points.push(pointFromEvent(e));
-    redraw([...strokes.slice(0, -1), stroke]);
+    if (!isDrawingRef.current) return;
+    const ctx = getCtx();
+    const from = lastPointRef.current;
+    if (!ctx || !from) return;
+    const to = pointFromEvent(e);
+    drawSegment(ctx, from, to, { type: brush, color, size, opacity });
+    lastPointRef.current = to;
   };
 
   const handlePointerUp = () => {
-    drawingRef.current = null;
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
   };
 
-  const undo = () => setStrokes((prev) => prev.slice(0, -1));
-  const clear = () => setStrokes([]);
+  const undo = () => {
+    const ctx = getCtx();
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+    const prev = historyRef.current.pop();
+    if (!prev) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setStrokeCount(0);
+      return;
+    }
+    ctx.putImageData(prev, 0, 0);
+    setStrokeCount((c) => Math.max(0, c - 1));
+  };
+
+  const clear = () => {
+    const ctx = getCtx();
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+    if (strokeCount > 0) pushHistory();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setStrokeCount(0);
+  };
 
   const insert = () => {
     const canvas = canvasRef.current;
-    if (!canvas || strokes.length === 0) return;
+    if (!canvas || strokeCount === 0) return;
     canvas.toBlob((blob) => {
       if (!blob) return;
       onInsert(new File([blob], "drawing.png", { type: "image/png" }));
     }, "image/png");
   };
 
+  useEffect(() => {
+    return () => {
+      historyRef.current = [];
+    };
+  }, []);
+
+  const activeBrush = BRUSHES.find((b) => b.id === brush)!;
+
   return (
-    <div className="fixed inset-0 z-[110] flex flex-col bg-stone-950/95 text-white">
+    <div className="fixed inset-0 z-[110] flex flex-col bg-stone-950/97 text-white">
       <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-stone-900 px-3 py-2">
         <button
           type="button"
@@ -143,7 +301,7 @@ export default function DrawingModal({
           <button
             type="button"
             onClick={undo}
-            disabled={strokes.length === 0}
+            disabled={strokeCount === 0}
             className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20 disabled:opacity-40"
           >
             <Undo2 size={14} />
@@ -152,7 +310,7 @@ export default function DrawingModal({
           <button
             type="button"
             onClick={clear}
-            disabled={strokes.length === 0}
+            disabled={strokeCount === 0}
             className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20 disabled:opacity-40"
           >
             <Trash2 size={14} />
@@ -161,7 +319,7 @@ export default function DrawingModal({
           <button
             type="button"
             onClick={insert}
-            disabled={strokes.length === 0}
+            disabled={strokeCount === 0}
             className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-medium hover:bg-rose-700 disabled:opacity-40"
           >
             <Check size={14} />
@@ -170,20 +328,18 @@ export default function DrawingModal({
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-auto p-4">
+      <div className="flex min-h-[38dvh] flex-1 items-center justify-center overflow-auto p-4">
         <div
-          className="relative w-full shrink-0 touch-none rounded-xl shadow-2xl"
+          className="relative w-full shrink-0 touch-none overflow-hidden rounded-xl bg-white shadow-2xl"
           style={{
             aspectRatio: `${CANVAS_W} / ${CANVAS_H}`,
             maxWidth: "min(90vw, 420px)",
             maxHeight: "100%",
-            backgroundImage:
-              "linear-gradient(45deg, #44403c 25%, transparent 25%), linear-gradient(-45deg, #44403c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #44403c 75%), linear-gradient(-45deg, transparent 75%, #44403c 75%)",
-            backgroundSize: "20px 20px",
-            backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
-            backgroundColor: "#292524",
           }}
         >
+          {background && (
+            <div className="pointer-events-none absolute inset-0">{background}</div>
+          )}
           <canvas
             ref={canvasRef}
             width={CANVAS_W}
@@ -192,59 +348,84 @@ export default function DrawingModal({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
-            className="h-full w-full touch-none"
+            className="absolute inset-0 h-full w-full touch-none"
           />
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-white/10 bg-stone-900 px-3 py-2.5">
-        <div className="flex items-center gap-1.5">
-          {COLORS.map((c) => (
+      <div className="flex max-h-[46dvh] shrink-0 flex-col gap-3 overflow-y-auto border-t border-white/10 bg-stone-900 px-3 py-3">
+        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+          {BRUSHES.map(({ id, icon: Icon, labelMn, labelEn }) => (
             <button
-              key={c}
+              key={id}
               type="button"
-              onClick={() => {
-                setColor(c);
-                setErasing(false);
-              }}
-              className={`h-6 w-6 rounded-full border-2 ${
-                !erasing && color === c ? "border-rose-400" : "border-white/30"
+              onClick={() => setBrush(id)}
+              title={uiEnglish ? labelEn : labelMn}
+              className={`flex flex-col items-center gap-1 rounded-xl border py-2 text-[10px] font-medium transition-colors ${
+                brush === id
+                  ? "border-rose-500 bg-rose-600/20 text-rose-300"
+                  : "border-white/10 bg-white/[0.04] text-white/50 hover:bg-white/10 hover:text-white/80"
               }`}
-              style={{ backgroundColor: c }}
-              aria-label={c}
-            />
+            >
+              <Icon size={16} />
+              {uiEnglish ? labelEn : labelMn}
+            </button>
           ))}
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => {
-              setColor(e.target.value);
-              setErasing(false);
-            }}
-            className="h-6 w-6 cursor-pointer rounded-full border-2 border-white/30 bg-transparent p-0"
-          />
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-white/70">
-          {ui("Зузаан", "Size")}
-          <input
-            type="range"
-            min={2}
-            max={40}
-            value={size}
-            onChange={(e) => setSize(Number(e.target.value))}
-            className="w-24"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={() => setErasing((v) => !v)}
-          className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${
-            erasing ? "bg-rose-600" : "bg-white/10 hover:bg-white/20"
-          }`}
-        >
-          <Eraser size={14} />
-          {ui("Арчигч", "Eraser")}
-        </button>
+
+        {brush !== "eraser" && (
+          <div className="flex items-center gap-1.5">
+            {COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                className={`h-6 w-6 rounded-full border-2 ${
+                  color === c ? "border-rose-400" : "border-white/30"
+                }`}
+                style={{ backgroundColor: c }}
+                aria-label={c}
+              />
+            ))}
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-6 w-6 cursor-pointer rounded-full border-2 border-white/30 bg-transparent p-0"
+            />
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-1.5 text-xs text-white/70">
+            {ui("Зузаан", "Size")}
+            <input
+              type="range"
+              min={2}
+              max={60}
+              value={size}
+              onChange={(e) => setSize(Number(e.target.value))}
+              className="w-24"
+            />
+          </label>
+          {brush !== "eraser" && (
+            <label className="flex items-center gap-1.5 text-xs text-white/70">
+              {ui("Тодрол", "Opacity")}
+              <input
+                type="range"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={opacity}
+                onChange={(e) => setOpacity(Number(e.target.value))}
+                className="w-24"
+              />
+            </label>
+          )}
+          <span className="ml-auto text-[10px] uppercase tracking-wide text-white/40">
+            {uiEnglish ? activeBrush.labelEn : activeBrush.labelMn}
+          </span>
+        </div>
       </div>
     </div>
   );

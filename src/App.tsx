@@ -3656,55 +3656,12 @@ export default function App() {
             </div>
           )}
 
-          {/* Editor panel: draggable + accordion */}
-          {isEditing && !fullScreenPageId && (!sharedViewMode || canEditSharedLink) && (
-            <div
-              ref={editorPanelRef}
-              className="fixed z-30 flex max-h-[min(calc(100dvh-16px),900px)] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl"
-              style={{
-                left: editorPlacement.left,
-                top: editorPlacement.top,
-                // This used to be a hardcoded Tailwind width class (10rem =
-                // 160px on phones) that had drifted completely out of sync
-                // with editorPanelWidthPx() — the function that actually
-                // computes the panel's left position assuming a given
-                // width. The mismatch meant several MN-language accordion
-                // labels ("Хуудасны загвар", "Сонгосон элемент") truncated
-                // to "..." with no way to read the rest. One function is
-                // now the single source of truth for both.
-                width: editorPanelWidthPx(
-                  typeof window === "undefined" ? 1024 : window.innerWidth,
-                ),
-              }}
-            >
-              <div
-                className="flex shrink-0 cursor-grab touch-none select-none items-center gap-1.5 border-b border-stone-200 bg-stone-100 px-2 py-1.5 active:cursor-grabbing md:gap-2 md:px-3 md:py-2"
-                onPointerDown={startEditorDrag}
-              >
-                <GripVertical className="size-4 text-stone-400 md:size-[18px]" />
-                <span className="text-xs font-semibold text-stone-700 md:text-sm">
-                  {isDemoShare
-                    ? ui("Demo засах", "Edit demo")
-                    : ui("Засвар", "Edit")}
-                </span>
-              </div>
-              <div
-                className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-2 md:p-4"
-                data-allow-native-scroll="true"
-              >
-                <React.Suspense
-                  fallback={
-                    <div className="flex items-center justify-center py-8">
-                      <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
-                    </div>
-                  }
-                >
-                {renderEditorPanelBody()}
-                </React.Suspense>
-              </div>
-            </div>
-          )}
-
+          {/* The old floating accordion panel used to live here on the front
+              spread view. All of its tools now live exclusively inside the
+              full-screen per-page editor (opened via "Edit Left"/"Edit
+              Right" below) — the front view only ever shows those two
+              buttons while editing, matching book's PageEditor.jsx model
+              where the front view has no persistent tool panel at all. */}
         </div>
 
         {/* Dedicated full-screen page editor, opened by "Edit Left" /
@@ -3755,7 +3712,12 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-                  <div className="flex flex-1 items-center justify-center overflow-auto p-4 md:p-8">
+                  {/* min-h reserves a guaranteed share of the viewport on
+                      mobile so the page is always visible, no matter how
+                      tall the tool panel below it gets — previously this
+                      region had no floor, so a tall panel could squeeze the
+                      page preview down to nothing. */}
+                  <div className="flex min-h-[42dvh] flex-1 items-center justify-center overflow-auto p-4 md:min-h-0 md:p-8">
                     <div
                       className="relative w-full shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl"
                       style={{
@@ -3784,7 +3746,7 @@ export default function App() {
                       />
                     </div>
                   </div>
-                  <div className="w-full shrink-0 overflow-y-auto border-t border-white/10 bg-white p-3 text-stone-800 md:h-full md:w-80 md:border-l md:border-t-0">
+                  <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-white/10 bg-white p-3 text-stone-800 md:max-h-none md:h-full md:w-80 md:border-l md:border-t-0">
                     <React.Suspense
                       fallback={
                         <div className="flex items-center justify-center py-8">
@@ -3800,17 +3762,43 @@ export default function App() {
             );
           })()}
 
-        {showDrawing && (
-          <DrawingModal
-            language={uiLanguage}
-            onCancel={() => setShowDrawing(false)}
-            onInsert={(file) => {
-              const targetPageId = fullScreenPageId ?? selectedPageId;
-              if (targetPageId) addImageFileToPage(targetPageId, file);
-              setShowDrawing(false);
-            }}
-          />
-        )}
+        {showDrawing &&
+          (() => {
+            const targetPageId = fullScreenPageId ?? selectedPageId;
+            const targetPage = pages.find((p) => p.id === targetPageId);
+            return (
+              <DrawingModal
+                language={uiLanguage}
+                background={
+                  targetPage && (
+                    <PageContent
+                      page={targetPage}
+                      isEditing={false}
+                      selectedElementId={null}
+                      onSelectElement={() => {}}
+                      onUpdateElement={() => {}}
+                      onVideoAudibleChange={setVideoAudible}
+                      onDropImageIntoPolaroid={() => {}}
+                      isVideoMuted={isVideoMuted}
+                      setVideoMuted={setVideoMuted}
+                      isActive={false}
+                      onSelectPage={() => {}}
+                      isDemoShare={isDemoShare}
+                      demoHdIntent={demoHdIntent}
+                      demoArmedVideoIds={demoArmedVideoIds}
+                      armDemoVideo={armDemoVideo}
+                      language={uiLanguage}
+                    />
+                  )
+                }
+                onCancel={() => setShowDrawing(false)}
+                onInsert={(file) => {
+                  if (targetPageId) addImageFileToPage(targetPageId, file);
+                  setShowDrawing(false);
+                }}
+              />
+            );
+          })()}
         <div
           className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
           aria-hidden
