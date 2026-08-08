@@ -119,10 +119,15 @@ function getInitialPagesAndShare(): {
   return { pages: defaultPages, openedFromShareLink: false };
 }
 
-/** Matches Tailwind `md` (768px): narrow panel on phones (~50% of previous 20rem width). */
+/** Matches Tailwind `md` (768px): narrower panel on phones than desktop's 320px. */
 function editorPanelWidthPx(viewportWidth: number): number {
   if (viewportWidth < 768) {
-    return Math.min(160, Math.max(120, Math.floor(viewportWidth * 0.5) - 8));
+    // 160px (roughly half the old 320px desktop width) was too narrow for
+    // several MN-language accordion labels — "Хуудасны загвар", "Сонгосон
+    // элемент" — which truncated to "..." with no way to read the rest.
+    // 78% of viewport comfortably fits them while still leaving a sliver
+    // of the card preview visible behind the panel.
+    return Math.min(280, Math.max(220, Math.floor(viewportWidth * 0.78)));
   }
   return Math.min(320, viewportWidth - 16);
 }
@@ -132,6 +137,15 @@ function defaultEditorLeftPx(): number {
   const vw = window.innerWidth;
   const pw = editorPanelWidthPx(vw);
   return Math.max(8, vw - pw - 12);
+}
+
+/** Default top offset for the editor panel — pushed down on phones so it
+ *  doesn't open directly on top of the shared-view hint banner, which can
+ *  wrap to several lines at narrow widths. Desktop's banner rarely wraps
+ *  past one or two lines, so it keeps its original tight offset. */
+function defaultEditorTopPx(): number {
+  if (typeof window === "undefined") return 12;
+  return window.innerWidth < 768 ? 132 : 12;
 }
 
 function parseYouTubeVideoId(url: string): string | null {
@@ -1395,7 +1409,7 @@ export default function App() {
 
   const [editorPlacement, setEditorPlacement] = useState(() => ({
     left: defaultEditorLeftPx(),
-    top: 12,
+    top: defaultEditorTopPx(),
   }));
   const [openAccordion, setOpenAccordion] = useState<EditorAccordionId | null>(
     null,
@@ -3497,8 +3511,22 @@ export default function App() {
           {isEditing && (!sharedViewMode || canEditSharedLink) && (
             <div
               ref={editorPanelRef}
-              className="fixed z-30 flex max-h-[min(calc(100dvh-16px),900px)] w-[min(10rem,calc(50vw-12px))] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl md:w-[min(20rem,calc(100vw-16px))]"
-              style={{ left: editorPlacement.left, top: editorPlacement.top }}
+              className="fixed z-30 flex max-h-[min(calc(100dvh-16px),900px)] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl"
+              style={{
+                left: editorPlacement.left,
+                top: editorPlacement.top,
+                // This used to be a hardcoded Tailwind width class (10rem =
+                // 160px on phones) that had drifted completely out of sync
+                // with editorPanelWidthPx() — the function that actually
+                // computes the panel's left position assuming a given
+                // width. The mismatch meant several MN-language accordion
+                // labels ("Хуудасны загвар", "Сонгосон элемент") truncated
+                // to "..." with no way to read the rest. One function is
+                // now the single source of truth for both.
+                width: editorPanelWidthPx(
+                  typeof window === "undefined" ? 1024 : window.innerWidth,
+                ),
+              }}
             >
               <div
                 className="flex shrink-0 cursor-grab touch-none select-none items-center gap-1.5 border-b border-stone-200 bg-stone-100 px-2 py-1.5 active:cursor-grabbing md:gap-2 md:px-3 md:py-2"
