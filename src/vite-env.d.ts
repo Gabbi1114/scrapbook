@@ -16,8 +16,6 @@ interface ImportMetaEnv {
   readonly VITE_SHARE_CREATE_SECRET?: string;
   /** Optional GIPHY API key for GIF search in editor. */
   readonly VITE_GIPHY_API_KEY?: string;
-  /** Optional Tenor API key for GIF search fallback. */
-  readonly VITE_TENOR_API_KEY?: string;
   /** Optional Pixabay API key for graphic/vector search. */
   readonly VITE_PIXABAY_API_KEY?: string;
   /** Optional password lock for the main (non-share) editor site. */

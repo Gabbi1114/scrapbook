@@ -133,16 +133,12 @@ const DEMO_TEXT_EFFECTS = [
 ];
 
 // GIPHY's shared public beta key is rate-limited/blocked in practice (403) —
-// set VITE_GIPHY_API_KEY to a real key from developers.giphy.com if you want
-// this path to actually return results; otherwise it fails fast and falls
-// through to Tenor below, same as always.
+// set VITE_GIPHY_API_KEY to a real key from developers.giphy.com to actually
+// get results. There used to be a Tenor fallback here, but Google fully
+// discontinued the Tenor API (new keys stopped Jan 13 2026, service
+// decommissioned Jun 30 2026) — no key will ever work for it again, for
+// anyone, so that code is gone rather than left as permanently-dead weight.
 const GIPHY_PUBLIC_BETA_KEY = "dc6zaTOxFJmzC";
-// Tenor's v1 API (g.tenor.com/v1) was shut down after Google's acquisition —
-// every request 403s now, which is why GIF search stopped working entirely
-// once GIPHY also started failing. v2 needs a real Google Cloud API key
-// (console.cloud.google.com → enable "Tenor API" → create an API key, free
-// tier) set as VITE_TENOR_API_KEY; there is no working public fallback key.
-const TENOR_PUBLIC_KEY = "";
 
 type GifPick = {
   id: string;
@@ -356,43 +352,6 @@ export function EditorPanelBody({
           .filter((v): v is GifPick => v !== null);
       }
 
-      // GIPHY's public beta key is blocked; use Tenor as fallback. Tenor v2
-      // (v1 was shut down after Google's acquisition) needs a real Google
-      // Cloud API key and nests format URLs under media_formats instead of
-      // a media[] array — see VITE_TENOR_API_KEY above.
-      if (picks.length === 0) {
-        const tenorKey =
-          (import.meta.env.VITE_TENOR_API_KEY || "").trim() || TENOR_PUBLIC_KEY;
-        const tenorUrl =
-          `https://tenor.googleapis.com/v2/search?key=${encodeURIComponent(tenorKey)}` +
-          `&q=${encodeURIComponent(q)}&limit=12&media_filter=tinygif,gif&contentfilter=high`;
-        const tenorRes = await fetch(tenorUrl);
-        if (tenorRes.ok) {
-          const tenor = (await tenorRes.json()) as {
-            results?: Array<{
-              id?: string;
-              title?: string;
-              media_formats?: {
-                gif?: { url?: string };
-                tinygif?: { url?: string };
-              };
-            }>;
-          };
-          picks = (tenor.results || [])
-            .map((gif) => {
-              const fullUrl = gif.media_formats?.gif?.url || "";
-              const previewUrl = gif.media_formats?.tinygif?.url || fullUrl;
-              if (!gif.id || !previewUrl || !fullUrl) return null;
-              return {
-                id: `tenor-${gif.id}`,
-                title: gif.title || "GIF",
-                previewUrl,
-                fullUrl,
-              };
-            })
-            .filter((v): v is GifPick => v !== null);
-        }
-      }
       setGifResults(picks);
       if (picks.length === 0) {
         setGifError(
@@ -688,7 +647,7 @@ export function EditorPanelBody({
               </button>
             </div>
             <p className="mb-2 text-xs font-medium text-stone-600">
-              {uiEnglish ? "Search GIFs (GIPHY / Tenor)" : "GIF хайх (GIPHY / Tenor)"}
+              {uiEnglish ? "Search GIFs (GIPHY)" : "GIF хайх (GIPHY)"}
             </p>
             <div className="mb-2 flex gap-2">
               <input
