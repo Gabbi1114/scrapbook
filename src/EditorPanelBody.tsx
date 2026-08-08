@@ -263,6 +263,7 @@ export function EditorPanelBody({
   addPagesPair,
   onJumpToPage,
   onOpenDrawing,
+  onDrawOnElement,
 }: {
   selectedPageId: string | null;
   isDemoMode?: boolean;
@@ -310,6 +311,11 @@ export function EditorPanelBody({
   /** Opens the freehand drawing tool; the finished drawing is inserted as a
    *  regular photo element on selectedPageId. */
   onOpenDrawing?: () => void;
+  /** Opens the drawing tool aimed at one specific photo — the canvas shows
+   *  just that photo and the result is dropped back in its exact spot, so
+   *  it reads as drawing directly on the picture rather than adding a new
+   *  separate sticker. */
+  onDrawOnElement?: (elementId: string) => void;
 }) {
   const uiEnglish = language === "en";
   const [gifQuery, setGifQuery] = useState("love");
@@ -1276,6 +1282,19 @@ export function EditorPanelBody({
                 className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-stone-200 accent-rose-500"
               />
             </div>
+          )}
+
+          {(selectedEl.type === "image" ||
+            (selectedEl.type === "sticker" && selectedEl.frameImage)) &&
+            onDrawOnElement && (
+            <button
+              type="button"
+              onClick={() => onDrawOnElement(selectedElementId)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white py-2 px-4 text-stone-700 hover:bg-rose-50"
+            >
+              <PenTool size={16} />
+              {uiEnglish ? "Draw on this photo" : "Энэ зураг дээр зурах"}
+            </button>
           )}
 
           <button

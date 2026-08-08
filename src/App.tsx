@@ -1399,8 +1399,13 @@ export default function App() {
   );
   // Freehand drawing tool — draws on a scratch canvas, then the result is
   // inserted as a regular movable/resizable "image" element, reusing the
-  // whole photo pipeline instead of a new element type.
+  // whole photo pipeline instead of a new element type. When
+  // drawTargetElementId is set, the tool draws over that specific photo
+  // (matching its exact box) instead of the whole page.
   const [showDrawing, setShowDrawing] = useState(false);
+  const [drawTargetElementId, setDrawTargetElementId] = useState<
+    string | null
+  >(null);
   const [showFinalizePrompt, setShowFinalizePrompt] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [appBackgroundColor, setAppBackgroundColor] = useState("#4A5568");
@@ -2389,16 +2394,22 @@ export default function App() {
     pageId: string,
     type: ElementType,
     content: string,
-    opts?: { width?: number; height?: number },
+    opts?: {
+      width?: number;
+      height?: number;
+      x?: number;
+      y?: number;
+      rotation?: number;
+    },
   ) => {
     const isPolaroidSticker =
       type === "sticker" && content === POLAROID_STICKER_TOKEN;
     const newElement: PageElement = {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      x: 100,
-      y: 100,
-      rotation: Math.random() * 20 - 10,
+      x: opts?.x ?? 100,
+      y: opts?.y ?? 100,
+      rotation: opts?.rotation ?? Math.random() * 20 - 10,
       content,
       fontSize: type === "text" ? 32 : type === "sticker" ? 48 : undefined,
       width:
@@ -2615,7 +2626,14 @@ export default function App() {
       removePage={removePage}
       onJumpToPage={jumpToPage}
       addPagesPair={addPagesPair}
-      onOpenDrawing={() => setShowDrawing(true)}
+      onOpenDrawing={() => {
+        setDrawTargetElementId(null);
+        setShowDrawing(true);
+      }}
+      onDrawOnElement={(elementId) => {
+        setDrawTargetElementId(elementId);
+        setShowDrawing(true);
+      }}
     />
   );
 
@@ -2804,7 +2822,11 @@ export default function App() {
   // Shared by the file-picker upload path and the drawing tool (which
   // produces a PNG Blob instead of a picked File) so both funnel through
   // the same optimize -> upload -> addElement pipeline.
-  const addImageFileToPage = (pageId: string, file: File) => {
+  const addImageFileToPage = (
+    pageId: string,
+    file: File,
+    opts?: { width?: number; height?: number; x?: number; y?: number; rotation?: number },
+  ) => {
     if (currentShareId) {
       setShareHint(
         isDemoShare
@@ -2834,15 +2856,19 @@ export default function App() {
           mediaSize = null;
         }
         if (isDemoShare) {
-          const targetWidth = 220;
+          const targetWidth = opts?.width ?? 220;
           const ratio =
             mediaSize && mediaSize.height > 0
               ? mediaSize.width / mediaSize.height
               : 1;
-          const targetHeight = Math.max(60, Math.round(targetWidth / ratio));
+          const targetHeight =
+            opts?.height ?? Math.max(60, Math.round(targetWidth / ratio));
           addElement(pageId, "image", URL.createObjectURL(preparedFile), {
             width: targetWidth,
             height: targetHeight,
+            x: opts?.x,
+            y: opts?.y,
+            rotation: opts?.rotation,
           });
           window.setTimeout(() => logDemoDiagnostics("after adding image"), 0);
           setShareHint(
@@ -2869,15 +2895,19 @@ export default function App() {
         if (typeof uploaded.bytesLimit === "number") {
           setShareStorageLimitBytes(uploaded.bytesLimit);
         }
-        const targetWidth = 220;
+        const targetWidth = opts?.width ?? 220;
         const ratio =
           mediaSize && mediaSize.height > 0
             ? mediaSize.width / mediaSize.height
             : 1;
-        const targetHeight = Math.max(60, Math.round(targetWidth / ratio));
+        const targetHeight =
+          opts?.height ?? Math.max(60, Math.round(targetWidth / ratio));
         addElement(pageId, "image", uploaded.url, {
           width: targetWidth,
           height: targetHeight,
+          x: opts?.x,
+          y: opts?.y,
+          rotation: opts?.rotation,
         });
         setShareHint(ui("Зураг байршууллаа.", "Image uploaded."));
         window.setTimeout(() => setShareHint(null), 1400);
@@ -3695,7 +3725,10 @@ export default function App() {
                   <div className="ml-auto flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setShowDrawing(true)}
+                      onClick={() => {
+                        setDrawTargetElementId(null);
+                        setShowDrawing(true);
+                      }}
                       className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
                     >
                       <PenTool size={14} />
@@ -3766,6 +3799,55 @@ export default function App() {
           (() => {
             const targetPageId = fullScreenPageId ?? selectedPageId;
             const targetPage = pages.find((p) => p.id === targetPageId);
+            const targetEl = drawTargetElementId
+              ? pages
+                  .flatMap((p) => p.elements)
+                  .find((e) => e.id === drawTargetElementId)
+              : null;
+
+            // Drawing on a specific photo: canvas matches that photo's own
+            // box (2x for a crisp brush) and the result drops back at the
+            // exact same x/y/width/height/rotation, so it reads as drawing
+            // on the picture rather than adding a separate sticker.
+            if (targetEl) {
+              const elW = Math.max(40, Math.round(targetEl.width || 220));
+              const elH = Math.max(
+                40,
+                Math.round(targetEl.height || elW * 0.75),
+              );
+              return (
+                <DrawingModal
+                  language={uiLanguage}
+                  canvasWidth={elW * 2}
+                  canvasHeight={elH * 2}
+                  background={
+                    <img
+                      src={targetEl.frameImage || targetEl.content}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  }
+                  onCancel={() => {
+                    setShowDrawing(false);
+                    setDrawTargetElementId(null);
+                  }}
+                  onInsert={(file) => {
+                    if (targetPageId) {
+                      addImageFileToPage(targetPageId, file, {
+                        width: elW,
+                        height: elH,
+                        x: targetEl.x,
+                        y: targetEl.y,
+                        rotation: targetEl.rotation,
+                      });
+                    }
+                    setShowDrawing(false);
+                    setDrawTargetElementId(null);
+                  }}
+                />
+              );
+            }
+
             return (
               <DrawingModal
                 language={uiLanguage}

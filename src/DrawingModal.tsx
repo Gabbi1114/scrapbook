@@ -25,8 +25,8 @@ const COLORS = [
   "#7c3aed",
 ];
 
-const CANVAS_W = 800;
-const CANVAS_H = 1200;
+const DEFAULT_CANVAS_W = 800;
+const DEFAULT_CANVAS_H = 1200;
 
 type BrushType = "pen" | "pencil" | "brush" | "marker" | "spray" | "circle" | "eraser";
 
@@ -175,16 +175,24 @@ function drawSegment(
 export default function DrawingModal({
   language,
   background,
+  canvasWidth,
+  canvasHeight,
   onCancel,
   onInsert,
 }: {
   language?: Language;
   background?: React.ReactNode;
+  /** Overrides the drawing canvas' pixel size/aspect ratio — used to match
+   *  a specific photo's box instead of the default whole-page shape. */
+  canvasWidth?: number;
+  canvasHeight?: number;
   onCancel: () => void;
   onInsert: (file: File) => void;
 }) {
   const uiEnglish = language === "en";
   const ui = (mn: string, en: string) => (uiEnglish ? en : mn);
+  const CANVAS_W = canvasWidth ?? DEFAULT_CANVAS_W;
+  const CANVAS_H = canvasHeight ?? DEFAULT_CANVAS_H;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const historyRef = useRef<ImageData[]>([]);
