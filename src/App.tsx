@@ -24,6 +24,8 @@ import {
   Redo2,
   Link2,
   GripVertical,
+  ArrowLeft,
+  PenTool,
 } from "lucide-react";
 import type { ElementType, PageData, PageElement } from "./scrapbookShare";
 import {
@@ -46,6 +48,7 @@ import {
   useBookStageScale,
 } from "./bookStage";
 import { EditorPanelBody, type EditorAccordionId } from "./EditorPanelBody";
+import DrawingModal from "./DrawingModal";
 
 // This used to be React.lazy()-loaded as its own chunk, since share-link
 // viewers never open the editor. But the production build runs through
@@ -1389,6 +1392,15 @@ export default function App() {
 
   const [currentLeaf, setCurrentLeaf] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
+  // A dedicated full-screen editor for one page — "Edit Left" / "Edit Right"
+  // open this instead of just selecting a page in the small floating panel.
+  const [fullScreenPageId, setFullScreenPageId] = useState<string | null>(
+    null,
+  );
+  // Freehand drawing tool — draws on a scratch canvas, then the result is
+  // inserted as a regular movable/resizable "image" element, reusing the
+  // whole photo pipeline instead of a new element type.
+  const [showDrawing, setShowDrawing] = useState(false);
   const [showFinalizePrompt, setShowFinalizePrompt] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [appBackgroundColor, setAppBackgroundColor] = useState("#4A5568");
@@ -2538,6 +2550,75 @@ export default function App() {
     setSelectedElementId(null);
   };
 
+  // Opens the dedicated full-screen editor for whichever page is currently
+  // on the left/right of the spread — the direct equivalent of book's
+  // "Edit Left" / "Edit Right".
+  const editSideOfSpread = (side: "left" | "right") => {
+    const pageId = side === "left" ? visibleLeftPageId : visibleRightPageId;
+    if (!pageId) return;
+    setSelectedPageId(pageId);
+    setSelectedElementId(null);
+    setIsEditing(true);
+    setFullScreenPageId(pageId);
+  };
+
+  const addPagesPair = () => {
+    const newPages = [...pages];
+    const backCover = newPages.pop();
+    const pageNum = newPages.length;
+    newPages.push({
+      id: `page-${pageNum}`,
+      background: "bg-stone-50",
+      pattern: "",
+      elements: [],
+    });
+    newPages.push({
+      id: `page-${pageNum + 1}`,
+      background: "bg-stone-50",
+      pattern: "",
+      elements: [],
+    });
+    if (backCover) newPages.push(backCover);
+    updatePagesWithHistory(newPages);
+  };
+
+  // Shared between the floating editor panel and the full-screen page
+  // editor so tool logic (add text/photo/sticker/background, accordions)
+  // isn't duplicated in two places.
+  const renderEditorPanelBody = () => (
+    <EditorPanelBody
+      selectedPageId={selectedPageId}
+      isDemoMode={isDemoShare}
+      language={uiLanguage}
+      selectedElementId={selectedElementId}
+      pages={pages}
+      openAccordion={openAccordion}
+      setOpenAccordion={setOpenAccordion}
+      appBackgroundColor={appBackgroundColor}
+      setAppBackgroundColor={setAppBackgroundColor}
+      appBackgroundImageUrl={appBackgroundImageUrl}
+      setAppBackgroundImageUrl={setAppBackgroundImageUrl}
+      backgroundMusicUrl={backgroundMusicUrl}
+      setBackgroundMusicUrl={setBackgroundMusicUrl}
+      saveMusicLink={saveMusicLinkNow}
+      addElement={addElement}
+      handleImageUpload={handleImageUpload}
+      handleVideoUpload={handleVideoUpload}
+      handlePageBackgroundImageUpload={handlePageBackgroundImageUpload}
+      handleAppBackgroundImageUpload={handleAppBackgroundImageUpload}
+      updatePageBackground={updatePageBackground}
+      updatePageBackgroundImage={updatePageBackgroundImage}
+      updatePagePattern={updatePagePattern}
+      updateElement={updateElement}
+      updatePagesWithHistory={updatePagesWithHistory}
+      deleteElement={deleteElement}
+      removePage={removePage}
+      onJumpToPage={jumpToPage}
+      addPagesPair={addPagesPair}
+      onOpenDrawing={() => setShowDrawing(true)}
+    />
+  );
+
   const updatePageBackground = (pageId: string, bg: string) => {
     updatePagesWithHistory(
       pages.map((p) => (p.id === pageId ? { ...p, background: bg } : p)),
@@ -2720,12 +2801,10 @@ export default function App() {
     setVideoMutedById({});
   }, [currentLeaf]);
 
-  const handleImageUpload = (
-    pageId: string,
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Shared by the file-picker upload path and the drawing tool (which
+  // produces a PNG Blob instead of a picked File) so both funnel through
+  // the same optimize -> upload -> addElement pipeline.
+  const addImageFileToPage = (pageId: string, file: File) => {
     if (currentShareId) {
       setShareHint(
         isDemoShare
@@ -2803,7 +2882,6 @@ export default function App() {
         setShareHint(ui("Зураг байршууллаа.", "Image uploaded."));
         window.setTimeout(() => setShareHint(null), 1400);
       })();
-      e.target.value = "";
       return;
     }
 
@@ -2814,6 +2892,15 @@ export default function App() {
         "Create or open a share link first. Then upload your image there so it can be saved in the cloud.",
       ),
     );
+  };
+
+  const handleImageUpload = (
+    pageId: string,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    addImageFileToPage(pageId, file);
     e.target.value = "";
   };
 
@@ -3225,6 +3312,35 @@ export default function App() {
           )}
 
           <main className="absolute inset-0 flex flex-col min-h-0 min-w-0 overflow-hidden p-0">
+            {/* "Edit Left" / "Edit Right" — opens the dedicated full-screen
+                editor for whichever page is on that side of the spread,
+                same pattern as book's page navigation buttons. Only the
+                side(s) actually showing a page are offered. */}
+            {isEditing && !fullScreenPageId && (visibleLeftPageId || visibleRightPageId) && (
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[45] flex gap-2">
+                {visibleLeftPageId && (
+                  <button
+                    type="button"
+                    onClick={() => editSideOfSpread("left")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 text-stone-800 text-xs font-medium shadow-lg hover:bg-white"
+                  >
+                    <Edit3 size={13} />
+                    {ui("Зүүн талыг засах", "Edit Left")}
+                  </button>
+                )}
+                {visibleRightPageId && (
+                  <button
+                    type="button"
+                    onClick={() => editSideOfSpread("right")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/90 text-stone-800 text-xs font-medium shadow-lg hover:bg-white"
+                  >
+                    <Edit3 size={13} />
+                    {ui("Баруун талыг засах", "Edit Right")}
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Row: nav + book fills height minus bottom bar space */}
             <div className="relative flex flex-1 min-h-0 w-full items-center justify-center">
               <button
@@ -3541,7 +3657,7 @@ export default function App() {
           )}
 
           {/* Editor panel: draggable + accordion */}
-          {isEditing && (!sharedViewMode || canEditSharedLink) && (
+          {isEditing && !fullScreenPageId && (!sharedViewMode || canEditSharedLink) && (
             <div
               ref={editorPanelRef}
               className="fixed z-30 flex max-h-[min(calc(100dvh-16px),900px)] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl"
@@ -3583,63 +3699,118 @@ export default function App() {
                     </div>
                   }
                 >
-                <EditorPanelBody
-                  selectedPageId={selectedPageId}
-                  isDemoMode={isDemoShare}
-                  language={uiLanguage}
-                  selectedElementId={selectedElementId}
-                  pages={pages}
-                  openAccordion={openAccordion}
-                  setOpenAccordion={setOpenAccordion}
-                  appBackgroundColor={appBackgroundColor}
-                  setAppBackgroundColor={setAppBackgroundColor}
-                  appBackgroundImageUrl={appBackgroundImageUrl}
-                  setAppBackgroundImageUrl={setAppBackgroundImageUrl}
-                  backgroundMusicUrl={backgroundMusicUrl}
-                  setBackgroundMusicUrl={setBackgroundMusicUrl}
-                  saveMusicLink={saveMusicLinkNow}
-                  addElement={addElement}
-                  handleImageUpload={handleImageUpload}
-                  handleVideoUpload={handleVideoUpload}
-                  handlePageBackgroundImageUpload={
-                    handlePageBackgroundImageUpload
-                  }
-                  handleAppBackgroundImageUpload={
-                    handleAppBackgroundImageUpload
-                  }
-                  updatePageBackground={updatePageBackground}
-                  updatePageBackgroundImage={updatePageBackgroundImage}
-                  updatePagePattern={updatePagePattern}
-                  updateElement={updateElement}
-                  updatePagesWithHistory={updatePagesWithHistory}
-                  deleteElement={deleteElement}
-                  removePage={removePage}
-                  onJumpToPage={jumpToPage}
-                  addPagesPair={() => {
-                    const newPages = [...pages];
-                    const backCover = newPages.pop();
-                    const pageNum = newPages.length;
-                    newPages.push({
-                      id: `page-${pageNum}`,
-                      background: "bg-stone-50",
-                      pattern: "",
-                      elements: [],
-                    });
-                    newPages.push({
-                      id: `page-${pageNum + 1}`,
-                      background: "bg-stone-50",
-                      pattern: "",
-                      elements: [],
-                    });
-                    if (backCover) newPages.push(backCover);
-                    updatePagesWithHistory(newPages);
-                  }}
-                />
+                {renderEditorPanelBody()}
                 </React.Suspense>
               </div>
             </div>
           )}
+
         </div>
+
+        {/* Dedicated full-screen page editor, opened by "Edit Left" /
+            "Edit Right". Mirrors book's PageEditor.jsx: fixed full-screen
+            overlay with a header, a large focused page, and the same tool
+            panel used for the floating editor, restyled as a sidebar.
+            Rendered as a sibling of (not nested inside) the z-10 stage
+            wrapper above — that wrapper's own z-index otherwise traps any
+            fixed-position descendant in its stacking context, which would
+            put it below the top-right language switcher (z-80) no matter
+            how high a z-index it's given locally. */}
+        {fullScreenPageId &&
+          (() => {
+            const fsPage = pages.find((p) => p.id === fullScreenPageId);
+            const fsIndex = pages.findIndex((p) => p.id === fullScreenPageId);
+            if (!fsPage) return null;
+            return (
+              <div className="fixed inset-0 z-[100] flex flex-col bg-stone-950 text-white">
+                <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-stone-900 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setFullScreenPageId(null)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+                  >
+                    <ArrowLeft size={14} />
+                    {ui("Буцах", "Back")}
+                  </button>
+                  <span className="ml-1 text-xs font-semibold text-white/70">
+                    {ui("Хуудас", "Page")} {fsIndex + 1}
+                  </span>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDrawing(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium hover:bg-white/20"
+                    >
+                      <PenTool size={14} />
+                      {ui("Зурах", "Draw")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFullScreenPageId(null)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-medium hover:bg-rose-700"
+                    >
+                      <Check size={14} />
+                      {ui("Болсон", "Done")}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+                  <div className="flex flex-1 items-center justify-center overflow-auto p-4 md:p-8">
+                    <div
+                      className="relative w-full shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl"
+                      style={{
+                        aspectRatio: "2 / 3",
+                        maxWidth: "min(90vw, 480px)",
+                        maxHeight: "100%",
+                      }}
+                    >
+                      <PageContent
+                        page={fsPage}
+                        isEditing
+                        selectedElementId={selectedElementId}
+                        onSelectElement={setSelectedElementId}
+                        onUpdateElement={updateElement}
+                        onVideoAudibleChange={setVideoAudible}
+                        onDropImageIntoPolaroid={dropImageIntoPolaroid}
+                        isVideoMuted={isVideoMuted}
+                        setVideoMuted={setVideoMuted}
+                        isActive
+                        onSelectPage={() => setSelectedPageId(fullScreenPageId)}
+                        isDemoShare={isDemoShare}
+                        demoHdIntent={demoHdIntent}
+                        demoArmedVideoIds={demoArmedVideoIds}
+                        armDemoVideo={armDemoVideo}
+                        language={uiLanguage}
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full shrink-0 overflow-y-auto border-t border-white/10 bg-white p-3 text-stone-800 md:h-full md:w-80 md:border-l md:border-t-0">
+                    <React.Suspense
+                      fallback={
+                        <div className="flex items-center justify-center py-8">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
+                        </div>
+                      }
+                    >
+                      {renderEditorPanelBody()}
+                    </React.Suspense>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+        {showDrawing && (
+          <DrawingModal
+            language={uiLanguage}
+            onCancel={() => setShowDrawing(false)}
+            onInsert={(file) => {
+              const targetPageId = fullScreenPageId ?? selectedPageId;
+              if (targetPageId) addImageFileToPage(targetPageId, file);
+              setShowDrawing(false);
+            }}
+          />
+        )}
         <div
           className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
           aria-hidden

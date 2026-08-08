@@ -16,6 +16,7 @@ import {
   Plus,
   ChevronDown,
   Pipette,
+  PenTool,
 } from "lucide-react";
 import type { ElementType, PageData, PageElement } from "./scrapbookShare";
 import type { Language } from "./i18n";
@@ -261,6 +262,7 @@ export function EditorPanelBody({
   removePage,
   addPagesPair,
   onJumpToPage,
+  onOpenDrawing,
 }: {
   selectedPageId: string | null;
   isDemoMode?: boolean;
@@ -305,6 +307,9 @@ export function EditorPanelBody({
    *  alternative to flipping through with next/prev and clicking whichever
    *  page happens to be visible. */
   onJumpToPage: (pageId: string) => void;
+  /** Opens the freehand drawing tool; the finished drawing is inserted as a
+   *  regular photo element on selectedPageId. */
+  onOpenDrawing?: () => void;
 }) {
   const uiEnglish = language === "en";
   const [gifQuery, setGifQuery] = useState("love");
@@ -629,6 +634,16 @@ export function EditorPanelBody({
               />
             </label>
           </div>
+          {onOpenDrawing && (
+            <button
+              type="button"
+              onClick={onOpenDrawing}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white py-2.5 text-sm font-medium hover:bg-rose-50"
+            >
+              <PenTool size={18} />
+              {uiEnglish ? "Draw" : "Зурах"}
+            </button>
+          )}
           <div className="rounded-lg border border-stone-200 bg-white p-2">
             <p className="mb-2 text-xs font-medium text-stone-600">
               {uiEnglish ? "Add GIF link" : "GIF линк оруулах"}
