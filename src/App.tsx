@@ -106,6 +106,27 @@ const defaultPages: PageData[] = [
 
 const POLAROID_STICKER_TOKEN = "__POLAROID__";
 
+// Self-heals shares saved by the old add-page code, which minted ids from
+// the page array's length at creation time (`page-${pages.length}`) — after
+// any delete-then-add sequence that number can collide with an id still
+// used by another page. Every page-update function matches by
+// `p.id === pageId`, so two pages sharing an id silently mirror every edit
+// made to either one. Reassigns a fresh unique id to each id seen more than
+// once (keeping the first occurrence), applied whenever pages load from a
+// server bundle so an already-broken share repairs itself on next open.
+function dedupePageIds(pages: PageData[]): PageData[] {
+  const seen = new Set<string>();
+  return pages.map((p) => {
+    if (!seen.has(p.id)) {
+      seen.add(p.id);
+      return p;
+    }
+    const freshId = `page-${Math.random().toString(36).slice(2, 11)}`;
+    seen.add(freshId);
+    return { ...p, id: freshId };
+  });
+}
+
 function getInitialPagesAndShare(): {
   pages: PageData[];
   openedFromShareLink: boolean;
@@ -2111,15 +2132,16 @@ export default function App() {
           );
           if (cancelled || !applyShareBundleRef.current) return;
           if (bundle) {
+            const repairedPages = dedupePageIds(bundle.pages);
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
-            setPages(bundle.pages);
+            setPages(repairedPages);
             setBackgroundMusicUrl(bundle.musicUrl || "");
             setAppBackgroundImageUrl(bundle.appBackgroundImage || "");
             setShareEditUntilIso(bundle.editUntil);
             setShareStorageUsedBytes(bundle.mediaBytes);
             setSharedViewMode(true);
-            setHistory([bundle.pages]);
+            setHistory([repairedPages]);
             setHistoryIndex(0);
             setShareHint(null);
           } else {
@@ -2142,14 +2164,15 @@ export default function App() {
         }
         if (cancelled) return;
         if (bundle) {
+          const repairedPages = dedupePageIds(bundle.pages);
           setCurrentShareId(studioRootShareId);
-          setPages(bundle.pages);
+          setPages(repairedPages);
           setBackgroundMusicUrl(bundle.musicUrl || "");
           setAppBackgroundImageUrl(bundle.appBackgroundImage || "");
           setShareEditUntilIso(bundle.editUntil);
           setShareStorageUsedBytes(bundle.mediaBytes);
           setSharedViewMode(false);
-          setHistory([bundle.pages]);
+          setHistory([repairedPages]);
           setHistoryIndex(0);
         }
       } finally {
@@ -2741,15 +2764,18 @@ export default function App() {
   const addPagesPair = () => {
     const newPages = [...pages];
     const backCover = newPages.pop();
-    const pageNum = newPages.length;
+    // Not page-${newPages.length} — that collides after any delete-then-add
+    // sequence (length can revisit a number still used by another page),
+    // and every page-update function below matches by `p.id === pageId`,
+    // so two pages sharing an id silently receive the same edit forever.
     newPages.push({
-      id: `page-${pageNum}`,
+      id: `page-${Math.random().toString(36).slice(2, 11)}`,
       background: "bg-stone-50",
       pattern: "",
       elements: [],
     });
     newPages.push({
-      id: `page-${pageNum + 1}`,
+      id: `page-${Math.random().toString(36).slice(2, 11)}`,
       background: "bg-stone-50",
       pattern: "",
       elements: [],
@@ -3864,25 +3890,7 @@ export default function App() {
                     <div className="w-px h-6 bg-white/30 mx-1" />
                     <button
                       type="button"
-                      onClick={() => {
-                        const newPages = [...pages];
-                        const backCover = newPages.pop();
-                        const pageNum = newPages.length;
-                        newPages.push({
-                          id: `page-${pageNum}`,
-                          background: "bg-stone-50",
-                          pattern: "",
-                          elements: [],
-                        });
-                        newPages.push({
-                          id: `page-${pageNum + 1}`,
-                          background: "bg-stone-50",
-                          pattern: "",
-                          elements: [],
-                        });
-                        if (backCover) newPages.push(backCover);
-                        updatePagesWithHistory(newPages);
-                      }}
+                      onClick={addPagesPair}
                       className="w-10 h-10 bg-white text-stone-800 rounded-full flex items-center justify-center hover:bg-stone-100 transition-colors"
                       title={ui("Хуудас нэмэх", "Add page")}
                     >
