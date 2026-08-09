@@ -533,6 +533,20 @@ function demoVideo(
   };
 }
 
+// True while any photo/drawing on the page is still showing its optimistic
+// local blob: preview (upload not yet resolved to a real hosted URL).
+function pagesHavePendingBlobUrls(pages: PageData[]): boolean {
+  const isBlob = (v: unknown): v is string =>
+    typeof v === "string" && v.startsWith("blob:");
+  return pages.some(
+    (p) =>
+      isBlob(p.drawing) ||
+      p.elements.some(
+        (e) => isBlob(e.content) || isBlob(e.frameImage) || isBlob(e.drawingOverlay),
+      ),
+  );
+}
+
 function fitDemoElementToPage(element: PageElement): PageElement {
   const xScale = 0.52;
   const sizeScale = 0.84;
@@ -2303,6 +2317,15 @@ export default function App() {
 
   useEffect(() => {
     if (!canSaveToServer || !currentShareId) return;
+    // A blob: URL is only valid in this tab — it means some element's photo/
+    // drawing is still mid-upload. Saving it now would let the server's
+    // prune-unused-media step see the freshly-uploaded real file as
+    // "unreferenced" (this save's payload still points at the blob) and
+    // delete it before the follow-up save (once the upload resolves) ever
+    // gets to reference it — the file's gone, the URL 404s from then on.
+    // Skipping this round is safe: the swap-to-real-URL step changes `pages`
+    // again, which re-runs this effect and saves correctly.
+    if (pagesHavePendingBlobUrls(pages)) return;
     const seq = ++autosaveSeqRef.current;
     const id = window.setTimeout(async () => {
       autosaveAbortRef.current?.abort();
