@@ -85,6 +85,11 @@ const Z_STEP = 1;
 const Z_JUMP = 10;
 const Z_MIN = 1;
 const Z_MAX = 200;
+// Whole-page ink sits below every element's default z (10) so a fresh
+// photo isn't obscured by page-wide drawing unless the user explicitly
+// sends it back — one click of the existing "Send to back" button
+// (10 - Z_JUMP, floored at Z_MIN) already lands below this.
+const PAGE_DRAWING_Z = 5;
 
 declare global {
   interface Window {
@@ -4917,7 +4922,7 @@ function PageContent({
           alt=""
           draggable={false}
           className="pointer-events-none absolute inset-0 h-full w-full"
-          style={{ zIndex: 90 }}
+          style={{ zIndex: PAGE_DRAWING_Z }}
         />
       )}
     </div>
