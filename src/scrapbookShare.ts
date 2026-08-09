@@ -28,6 +28,10 @@ export interface PageElement {
   frameImage?: string;
   /** Per-element stacking order (CSS z-index). Default 10. */
   zIndex?: number;
+  /** Freehand ink drawn directly onto this element (a transparent PNG data/
+   *  hosted URL covering its own box) — not a separate selectable element,
+   *  so it can't be dragged/resized/deleted apart from the photo it's on. */
+  drawingOverlay?: string;
 }
 
 export interface PageData {
@@ -36,6 +40,9 @@ export interface PageData {
   backgroundImage?: string;
   pattern: string;
   elements: PageElement[];
+  /** Freehand ink drawn directly onto the whole page (a transparent PNG
+   *  covering the full page) — not a selectable/movable element. */
+  drawing?: string;
 }
 
 interface PayloadV1 {
@@ -99,6 +106,9 @@ function parseElement(raw: unknown): PageElement | null {
   if (typeof e.zIndex === "number" && Number.isFinite(e.zIndex)) {
     out.zIndex = Math.round(e.zIndex);
   }
+  if (typeof e.drawingOverlay === "string") {
+    out.drawingOverlay = e.drawingOverlay;
+  }
   return out;
 }
 
@@ -122,6 +132,9 @@ function parsePage(raw: unknown): PageData | null {
   };
   if (typeof p.backgroundImage === "string") {
     out.backgroundImage = p.backgroundImage.trim();
+  }
+  if (typeof p.drawing === "string") {
+    out.drawing = p.drawing;
   }
   return out;
 }

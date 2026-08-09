@@ -230,11 +230,13 @@ function collectReferencedMediaKeys(shareId, pages, appBackgroundImage) {
   addMediaKey(keys, appBackgroundImage, shareId);
   for (const page of Array.isArray(pages) ? pages : []) {
     addMediaKey(keys, page?.backgroundImage, shareId);
+    addMediaKey(keys, page?.drawing, shareId);
     for (const el of Array.isArray(page?.elements) ? page.elements : []) {
       if (el?.type === "image" || el?.type === "video") {
         addMediaKey(keys, el.content, shareId);
       }
       addMediaKey(keys, el?.frameImage, shareId);
+      addMediaKey(keys, el?.drawingOverlay, shareId);
     }
   }
   return keys;
@@ -333,7 +335,10 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
     };
   }
 
-  // Matches box/book's compression settings: 1920px max side, AVIF, effort 4.
+  // WebP, not AVIF — AVIF at effort 4 was ~10x slower to encode than WebP
+  // at effort 0 on Render's free-tier CPU, and that gap was most of what
+  // made uploads feel slow next to something like Canva. WebP's smaller
+  // file-size edge over AVIF isn't worth paying that encode time for here.
   const img = sharp(inputBuffer, { failOn: "none" }).rotate();
   const meta = await img.metadata();
   const maxSide = 1920;
@@ -344,13 +349,13 @@ async function convertImageForStorage(inputBuffer, mime, options = {}) {
     withoutEnlargement: true,
     kernel: sharp.kernel.lanczos3,
   });
-  const avif = await resized
-    .avif({ quality: options.hd ? 65 : 62, effort: 4 })
+  const webp = await resized
+    .webp({ quality: options.hd ? 82 : 78, effort: 0 })
     .toBuffer();
   return {
-    body: avif,
-    contentType: "image/avif",
-    ext: ".avif",
+    body: webp,
+    contentType: "image/webp",
+    ext: ".webp",
   };
 }
 

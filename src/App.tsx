@@ -49,6 +49,7 @@ import {
 } from "./bookStage";
 import { EditorPanelBody, type EditorAccordionId } from "./EditorPanelBody";
 import DrawingModal from "./DrawingModal";
+import CropModal from "./CropModal";
 
 // This used to be React.lazy()-loaded as its own chunk, since share-link
 // viewers never open the editor. But the production build runs through
@@ -1406,6 +1407,12 @@ export default function App() {
   const [drawTargetElementId, setDrawTargetElementId] = useState<
     string | null
   >(null);
+  // Rectangular crop tool — replaces the same photo element's content in
+  // place (not a new element), same optimistic-then-swap upload as a fresh
+  // photo.
+  const [cropTargetElementId, setCropTargetElementId] = useState<
+    string | null
+  >(null);
   const [showFinalizePrompt, setShowFinalizePrompt] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [appBackgroundColor, setAppBackgroundColor] = useState("#4A5568");
@@ -2435,12 +2442,142 @@ export default function App() {
       }),
     );
     setSelectedElementId(newElement.id);
+    return newElement.id;
   };
 
   const storageLeftMb = Math.max(
     0,
     (shareStorageLimitBytes - shareStorageUsedBytes) / (1024 * 1024),
   );
+
+  // Swaps one element's content in place (e.g. a local blob URL -> the real
+  // uploaded URL once it's ready) without creating an undo step and without
+  // closing over a possibly-stale `pages` snapshot — a functional setState
+  // update always sees the latest state, which matters here since this runs
+  // from a background upload that can resolve well after other edits.
+  const swapElementContent = (
+    pageId: string,
+    elementId: string,
+    newContent: string,
+  ) => {
+    setPages((prev) =>
+      prev.map((p) =>
+        p.id === pageId
+          ? {
+              ...p,
+              elements: p.elements.map((e) =>
+                e.id === elementId ? { ...e, content: newContent } : e,
+              ),
+            }
+          : p,
+      ),
+    );
+  };
+
+  // Same idea as swapElementContent, generalized to any page/element field —
+  // used for the drawing tool's ink layers, which are fields on the page or
+  // element itself (not separate elements), so a plain photo swap helper
+  // doesn't cover them.
+  const swapPageField = <K extends "drawing">(
+    pageId: string,
+    field: K,
+    value: PageData[K],
+  ) => {
+    setPages((prev) =>
+      prev.map((p) => (p.id === pageId ? { ...p, [field]: value } : p)),
+    );
+  };
+
+  const swapElementField = <K extends "drawingOverlay">(
+    pageId: string,
+    elementId: string,
+    field: K,
+    value: PageElement[K],
+  ) => {
+    setPages((prev) =>
+      prev.map((p) =>
+        p.id === pageId
+          ? {
+              ...p,
+              elements: p.elements.map((e) =>
+                e.id === elementId ? { ...e, [field]: value } : e,
+              ),
+            }
+          : p,
+      ),
+    );
+  };
+
+  // Draws directly onto the whole page — a fixed layer on the page itself
+  // (page.drawing), not a new movable/resizable element like a photo.
+  const applyPageDrawing = (pageId: string, file: File) => {
+    void (async () => {
+      const blobUrl = URL.createObjectURL(file);
+      swapPageField(pageId, "drawing", blobUrl);
+      if (!currentShareId || isDemoShare) return; // already showing it locally; nothing to persist
+      setShareHint(ui("Байршуулж байна...", "Uploading..."));
+      let preparedFile = file;
+      try {
+        preparedFile = await optimizeImageForUpload(file, {});
+      } catch {
+        preparedFile = file;
+      }
+      const uploaded = await uploadImageFileForShare(currentShareId, preparedFile);
+      if (uploaded.ok === false) {
+        setShareHint(null);
+        window.alert(toFriendlyUploadError(uploaded.error, "image", uiLanguage));
+        return;
+      }
+      if (typeof uploaded.bytesUsed === "number") setShareStorageUsedBytes(uploaded.bytesUsed);
+      if (typeof uploaded.bytesLimit === "number") setShareStorageLimitBytes(uploaded.bytesLimit);
+      swapPageField(pageId, "drawing", uploaded.url);
+      URL.revokeObjectURL(blobUrl);
+      setShareHint(ui("Зураг байршууллаа.", "Image uploaded."));
+      window.setTimeout(() => setShareHint(null), 1400);
+    })();
+  };
+
+  const removePageDrawing = (pageId: string) => {
+    swapPageField(pageId, "drawing", undefined);
+  };
+
+  // Draws directly onto one specific photo — a fixed layer on that element
+  // (element.drawingOverlay), moving/resizing/rotating with it automatically
+  // instead of being its own separately-selectable sticker.
+  const applyElementDrawingOverlay = (
+    pageId: string,
+    elementId: string,
+    file: File,
+  ) => {
+    void (async () => {
+      const blobUrl = URL.createObjectURL(file);
+      swapElementField(pageId, elementId, "drawingOverlay", blobUrl);
+      if (!currentShareId || isDemoShare) return;
+      setShareHint(ui("Байршуулж байна...", "Uploading..."));
+      let preparedFile = file;
+      try {
+        preparedFile = await optimizeImageForUpload(file, {});
+      } catch {
+        preparedFile = file;
+      }
+      const uploaded = await uploadImageFileForShare(currentShareId, preparedFile);
+      if (uploaded.ok === false) {
+        setShareHint(null);
+        window.alert(toFriendlyUploadError(uploaded.error, "image", uiLanguage));
+        return;
+      }
+      if (typeof uploaded.bytesUsed === "number") setShareStorageUsedBytes(uploaded.bytesUsed);
+      if (typeof uploaded.bytesLimit === "number") setShareStorageLimitBytes(uploaded.bytesLimit);
+      swapElementField(pageId, elementId, "drawingOverlay", uploaded.url);
+      URL.revokeObjectURL(blobUrl);
+      setShareHint(ui("Зураг байршууллаа.", "Image uploaded."));
+      window.setTimeout(() => setShareHint(null), 1400);
+    })();
+  };
+
+  const removeElementDrawingOverlay = (pageId: string, elementId: string) => {
+    swapElementField(pageId, elementId, "drawingOverlay", undefined);
+  };
 
   const probeVideoDurationSec = (file: File) =>
     new Promise<number>((resolve, reject) => {
@@ -2634,6 +2771,7 @@ export default function App() {
         setDrawTargetElementId(elementId);
         setShowDrawing(true);
       }}
+      onCropElement={(elementId) => setCropTargetElementId(elementId)}
     />
   );
 
@@ -2828,34 +2966,28 @@ export default function App() {
     opts?: { width?: number; height?: number; x?: number; y?: number; rotation?: number },
   ) => {
     if (currentShareId) {
-      setShareHint(
-        isDemoShare
-          ? ui(
-              "Демо горим: зургийг зөвхөн таны браузер дээр нэмж байна...",
-              "Demo mode: adding image locally...",
-            )
-          : ui(
-              "Зургийг оновчлоод байршуулж байна...",
-              "Optimizing and uploading the image...",
-            ),
-      );
-      void (async () => {
-        let preparedFile = file;
-        try {
-          preparedFile = await optimizeImageForUpload(
-            file,
-            isDemoShare ? { maxSide: getDemoImageMaxWidth() } : {},
-          );
-        } catch {
-          preparedFile = file;
-        }
-        let mediaSize: { width: number; height: number } | null = null;
-        try {
-          mediaSize = await probeImageSize(preparedFile);
-        } catch {
-          mediaSize = null;
-        }
-        if (isDemoShare) {
+      if (isDemoShare) {
+        setShareHint(
+          ui(
+            "Демо горим: зургийг зөвхөн таны браузер дээр нэмж байна...",
+            "Demo mode: adding image locally...",
+          ),
+        );
+        void (async () => {
+          let preparedFile = file;
+          try {
+            preparedFile = await optimizeImageForUpload(file, {
+              maxSide: getDemoImageMaxWidth(),
+            });
+          } catch {
+            preparedFile = file;
+          }
+          let mediaSize: { width: number; height: number } | null = null;
+          try {
+            mediaSize = await probeImageSize(preparedFile);
+          } catch {
+            mediaSize = null;
+          }
           const targetWidth = opts?.width ?? 220;
           const ratio =
             mediaSize && mediaSize.height > 0
@@ -2878,7 +3010,43 @@ export default function App() {
             ),
           );
           window.setTimeout(() => setShareHint(null), 1800);
-          return;
+        })();
+        return;
+      }
+
+      // Show the photo immediately from a local blob URL — like Canva, not
+      // like our old wait-for-the-full-upload-round-trip behavior. The real
+      // optimize/upload happens in the background and swaps the blob URL
+      // for the hosted one once it's ready, matching book's addImage().
+      void (async () => {
+        let mediaSize: { width: number; height: number } | null = null;
+        try {
+          mediaSize = await probeImageSize(file);
+        } catch {
+          mediaSize = null;
+        }
+        const targetWidth = opts?.width ?? 220;
+        const ratio =
+          mediaSize && mediaSize.height > 0
+            ? mediaSize.width / mediaSize.height
+            : 1;
+        const targetHeight =
+          opts?.height ?? Math.max(60, Math.round(targetWidth / ratio));
+        const blobUrl = URL.createObjectURL(file);
+        const newId = addElement(pageId, "image", blobUrl, {
+          width: targetWidth,
+          height: targetHeight,
+          x: opts?.x,
+          y: opts?.y,
+          rotation: opts?.rotation,
+        });
+        setShareHint(ui("Байршуулж байна...", "Uploading..."));
+
+        let preparedFile = file;
+        try {
+          preparedFile = await optimizeImageForUpload(file, {});
+        } catch {
+          preparedFile = file;
         }
         const uploaded = await uploadImageFileForShare(
           currentShareId,
@@ -2895,20 +3063,8 @@ export default function App() {
         if (typeof uploaded.bytesLimit === "number") {
           setShareStorageLimitBytes(uploaded.bytesLimit);
         }
-        const targetWidth = opts?.width ?? 220;
-        const ratio =
-          mediaSize && mediaSize.height > 0
-            ? mediaSize.width / mediaSize.height
-            : 1;
-        const targetHeight =
-          opts?.height ?? Math.max(60, Math.round(targetWidth / ratio));
-        addElement(pageId, "image", uploaded.url, {
-          width: targetWidth,
-          height: targetHeight,
-          x: opts?.x,
-          y: opts?.y,
-          rotation: opts?.rotation,
-        });
+        swapElementContent(pageId, newId, uploaded.url);
+        URL.revokeObjectURL(blobUrl);
         setShareHint(ui("Зураг байршууллаа.", "Image uploaded."));
         window.setTimeout(() => setShareHint(null), 1400);
       })();
@@ -2932,6 +3088,83 @@ export default function App() {
     if (!file) return;
     addImageFileToPage(pageId, file);
     e.target.value = "";
+  };
+
+  // Crop replaces an existing photo element's own content in place (not a
+  // new element) — same instant-local-preview-then-background-upload
+  // pattern as a fresh photo, just targeting an id that already exists.
+  // For a photo dropped into a polaroid frame, the frame box stays a fixed
+  // size (it's rendered with object-cover), so only frameImage changes —
+  // for a plain photo element, height is recomputed to the crop's new
+  // aspect ratio so the box doesn't stretch the result.
+  const applyCropToElement = (
+    pageId: string,
+    element: PageElement,
+    croppedFile: File,
+  ) => {
+    const isFramedPhoto = element.type === "sticker" && element.frameImage;
+    void (async () => {
+      let newHeight = element.height;
+      if (!isFramedPhoto) {
+        try {
+          const size = await probeImageSize(croppedFile);
+          if (element.width && size.height > 0) {
+            newHeight = Math.round((element.width * size.height) / size.width);
+          }
+        } catch {
+          // keep the existing height if the crop result can't be probed
+        }
+      }
+      const blobUrl = URL.createObjectURL(croppedFile);
+      updateElement(
+        pageId,
+        isFramedPhoto
+          ? { ...element, frameImage: blobUrl }
+          : { ...element, content: blobUrl, height: newHeight },
+      );
+      if (!currentShareId || isDemoShare) return; // already showing the crop locally; nothing to persist
+
+      setShareHint(ui("Байршуулж байна...", "Uploading..."));
+      let preparedFile = croppedFile;
+      try {
+        preparedFile = await optimizeImageForUpload(croppedFile, {});
+      } catch {
+        preparedFile = croppedFile;
+      }
+      const uploaded = await uploadImageFileForShare(currentShareId, preparedFile);
+      if (uploaded.ok === false) {
+        setShareHint(null);
+        window.alert(toFriendlyUploadError(uploaded.error, "image", uiLanguage));
+        return;
+      }
+      if (typeof uploaded.bytesUsed === "number") {
+        setShareStorageUsedBytes(uploaded.bytesUsed);
+      }
+      if (typeof uploaded.bytesLimit === "number") {
+        setShareStorageLimitBytes(uploaded.bytesLimit);
+      }
+      if (isFramedPhoto) {
+        setPages((prev) =>
+          prev.map((p) =>
+            p.id === pageId
+              ? {
+                  ...p,
+                  elements: p.elements.map((e) =>
+                    e.id === element.id
+                      ? { ...e, frameImage: uploaded.url }
+                      : e,
+                  ),
+                }
+              : p,
+          ),
+        );
+      } else {
+        swapElementContent(pageId, element.id, uploaded.url);
+      }
+      URL.revokeObjectURL(blobUrl);
+      setShareHint(ui("Зураг байршууллаа.", "Image uploaded."));
+      window.setTimeout(() => setShareHint(null), 1400);
+    })();
   };
 
   const handleVideoUpload = async (
@@ -3806,10 +4039,11 @@ export default function App() {
               : null;
 
             // Drawing on a specific photo: canvas matches that photo's own
-            // box (2x for a crisp brush) and the result drops back at the
-            // exact same x/y/width/height/rotation, so it reads as drawing
-            // on the picture rather than adding a separate sticker.
-            if (targetEl) {
+            // box (2x for a crisp brush). The result is saved as that
+            // element's own drawingOverlay field — not a new element — so
+            // it moves/rotates/resizes with the photo automatically and
+            // can't be separately dragged around like a sticker.
+            if (targetEl && targetPageId) {
               const elW = Math.max(40, Math.round(targetEl.width || 220));
               const elH = Math.max(
                 40,
@@ -3820,6 +4054,7 @@ export default function App() {
                   language={uiLanguage}
                   canvasWidth={elW * 2}
                   canvasHeight={elH * 2}
+                  initialDrawingUrl={targetEl.drawingOverlay}
                   background={
                     <img
                       src={targetEl.frameImage || targetEl.content}
@@ -3831,16 +4066,20 @@ export default function App() {
                     setShowDrawing(false);
                     setDrawTargetElementId(null);
                   }}
+                  onRemove={
+                    targetEl.drawingOverlay
+                      ? () => {
+                          removeElementDrawingOverlay(
+                            targetPageId,
+                            targetEl.id,
+                          );
+                          setShowDrawing(false);
+                          setDrawTargetElementId(null);
+                        }
+                      : undefined
+                  }
                   onInsert={(file) => {
-                    if (targetPageId) {
-                      addImageFileToPage(targetPageId, file, {
-                        width: elW,
-                        height: elH,
-                        x: targetEl.x,
-                        y: targetEl.y,
-                        rotation: targetEl.rotation,
-                      });
-                    }
+                    applyElementDrawingOverlay(targetPageId, targetEl.id, file);
                     setShowDrawing(false);
                     setDrawTargetElementId(null);
                   }}
@@ -3851,6 +4090,7 @@ export default function App() {
             return (
               <DrawingModal
                 language={uiLanguage}
+                initialDrawingUrl={targetPage?.drawing}
                 background={
                   targetPage && (
                     <PageContent
@@ -3866,6 +4106,7 @@ export default function App() {
                       isActive={false}
                       onSelectPage={() => {}}
                       isDemoShare={isDemoShare}
+                      hideDrawing
                       demoHdIntent={demoHdIntent}
                       demoArmedVideoIds={demoArmedVideoIds}
                       armDemoVideo={armDemoVideo}
@@ -3874,9 +4115,40 @@ export default function App() {
                   )
                 }
                 onCancel={() => setShowDrawing(false)}
+                onRemove={
+                  targetPage?.drawing
+                    ? () => {
+                        removePageDrawing(targetPage.id);
+                        setShowDrawing(false);
+                      }
+                    : undefined
+                }
                 onInsert={(file) => {
-                  if (targetPageId) addImageFileToPage(targetPageId, file);
+                  if (targetPageId) applyPageDrawing(targetPageId, file);
                   setShowDrawing(false);
+                }}
+              />
+            );
+          })()}
+
+        {cropTargetElementId &&
+          (() => {
+            const ownerPage = pages.find((p) =>
+              p.elements.some((e) => e.id === cropTargetElementId),
+            );
+            const targetEl = ownerPage?.elements.find(
+              (e) => e.id === cropTargetElementId,
+            );
+            if (!ownerPage || !targetEl) return null;
+            const cropSrc = targetEl.frameImage || targetEl.content;
+            return (
+              <CropModal
+                imageSrc={cropSrc}
+                language={uiLanguage}
+                onCancel={() => setCropTargetElementId(null)}
+                onApply={(file) => {
+                  applyCropToElement(ownerPage.id, targetEl, file);
+                  setCropTargetElementId(null);
                 }}
               />
             );
@@ -4509,6 +4781,7 @@ function PageContent({
   isActive,
   onSelectPage,
   isDemoShare,
+  hideDrawing,
   demoHdIntent,
   demoArmedVideoIds,
   armDemoVideo,
@@ -4534,6 +4807,11 @@ function PageContent({
   isActive: boolean;
   onSelectPage: () => void;
   isDemoShare: boolean;
+  /** Skips rendering page.drawing — used only when this PageContent is
+   *  itself the drawing tool's background reference for that same page, so
+   *  semi-transparent strokes don't get composited twice (once from the
+   *  saved layer, once live on the canvas on top). */
+  hideDrawing?: boolean;
   demoHdIntent: boolean;
   demoArmedVideoIds: Record<string, boolean>;
   armDemoVideo: (id: string) => void;
@@ -4607,6 +4885,18 @@ function PageContent({
           language={language}
         />
       ))}
+      {/* Freehand ink drawn on the whole page — a fixed overlay, not a
+          selectable/movable element, so it reads as drawing directly on
+          the paper rather than adding a photo-like sticker. */}
+      {page.drawing && !hideDrawing && (
+        <img
+          src={page.drawing}
+          alt=""
+          draggable={false}
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          style={{ zIndex: 90 }}
+        />
+      )}
     </div>
   );
 }
@@ -5013,7 +5303,7 @@ function DraggableElement({
                 "repeating-linear-gradient(0deg, rgba(130,107,87,0.04) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, rgba(130,107,87,0.03) 0 1px, transparent 1px 5px)",
             }}
           >
-            <div className="px-3 pt-3 pb-8 h-full">
+            <div className="relative px-3 pt-3 pb-8 h-full">
               {element.frameImage ? (
                 <DemoResponsiveImage
                   src={element.frameImage}
@@ -5028,6 +5318,17 @@ function DraggableElement({
               ) : (
                 <div className="h-full w-full rounded-[2px] border border-black/10 bg-linear-to-br from-stone-200 to-stone-300" />
               )}
+              {element.drawingOverlay && (
+                // Matches the photo's own box exactly: px-3/pt-3/pb-8 on
+                // the parent become explicit insets here since absolutely
+                // positioned offsets ignore the parent's padding.
+                <img
+                  src={element.drawingOverlay}
+                  alt=""
+                  draggable={false}
+                  className="pointer-events-none absolute left-3 right-3 top-3 bottom-8 rounded-[2px]"
+                />
+              )}
             </div>
           </div>
         ) : (
@@ -5036,20 +5337,34 @@ function DraggableElement({
           </div>
         ))}
       {element.type === "image" && (
-        <DemoResponsiveImage
-          src={element.content}
-          alt="scrapbook"
-          isDemoShare={isDemoShare}
-          hdReady={demoHdIntent}
-          sizes="30vw"
-          maxWidth={1280}
-          className="object-cover"
-          style={{
-            width: element.width || 192,
-            height: element.height ?? "auto",
-          }}
-          draggable={false}
-        />
+        <>
+          <DemoResponsiveImage
+            src={element.content}
+            alt="scrapbook"
+            isDemoShare={isDemoShare}
+            hdReady={demoHdIntent}
+            sizes="30vw"
+            maxWidth={1280}
+            className="object-cover"
+            style={{
+              width: element.width || 192,
+              height: element.height ?? "auto",
+            }}
+            draggable={false}
+          />
+          {element.drawingOverlay && (
+            <img
+              src={element.drawingOverlay}
+              alt=""
+              draggable={false}
+              className="pointer-events-none absolute left-0 top-0"
+              style={{
+                width: element.width || 192,
+                height: element.height ?? "auto",
+              }}
+            />
+          )}
+        </>
       )}
       {element.type === "video" && (
         <div className="relative inline-block">

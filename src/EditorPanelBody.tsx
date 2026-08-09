@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Pipette,
   PenTool,
+  Crop,
 } from "lucide-react";
 import type { ElementType, PageData, PageElement } from "./scrapbookShare";
 import type { Language } from "./i18n";
@@ -264,6 +265,7 @@ export function EditorPanelBody({
   onJumpToPage,
   onOpenDrawing,
   onDrawOnElement,
+  onCropElement,
 }: {
   selectedPageId: string | null;
   isDemoMode?: boolean;
@@ -316,6 +318,8 @@ export function EditorPanelBody({
    *  it reads as drawing directly on the picture rather than adding a new
    *  separate sticker. */
   onDrawOnElement?: (elementId: string) => void;
+  /** Opens the rectangular crop tool for one specific photo. */
+  onCropElement?: (elementId: string) => void;
 }) {
   const uiEnglish = language === "en";
   const [gifQuery, setGifQuery] = useState("love");
@@ -1285,16 +1289,29 @@ export function EditorPanelBody({
           )}
 
           {(selectedEl.type === "image" ||
-            (selectedEl.type === "sticker" && selectedEl.frameImage)) &&
-            onDrawOnElement && (
-            <button
-              type="button"
-              onClick={() => onDrawOnElement(selectedElementId)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white py-2 px-4 text-stone-700 hover:bg-rose-50"
-            >
-              <PenTool size={16} />
-              {uiEnglish ? "Draw on this photo" : "Энэ зураг дээр зурах"}
-            </button>
+            (selectedEl.type === "sticker" && selectedEl.frameImage)) && (
+            <div className="grid grid-cols-2 gap-2">
+              {onDrawOnElement && (
+                <button
+                  type="button"
+                  onClick={() => onDrawOnElement(selectedElementId)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white py-2 px-3 text-stone-700 hover:bg-rose-50"
+                >
+                  <PenTool size={16} />
+                  {uiEnglish ? "Draw" : "Зурах"}
+                </button>
+              )}
+              {onCropElement && (
+                <button
+                  type="button"
+                  onClick={() => onCropElement(selectedElementId)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white py-2 px-3 text-stone-700 hover:bg-rose-50"
+                >
+                  <Crop size={16} />
+                  {uiEnglish ? "Crop" : "Тайрах"}
+                </button>
+              )}
+            </div>
           )}
 
           <button
