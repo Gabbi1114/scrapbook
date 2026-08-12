@@ -410,17 +410,23 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
       "-t",
       String(MAX_VIDEO_SECONDS),
       "-vf",
-      "scale=min(960\\,iw):-2:flags=fast_bilinear",
+      // Single-quoted min(...), not a backslash-escaped comma — the
+      // backslash form got silently stripped by Node's argv handling when
+      // tested on Windows, breaking ffmpeg's filter-graph parser. Single
+      // quotes are ffmpeg's own filter-value quoting and aren't touched by
+      // any OS/child_process layer — verified scale-down-only (never
+      // upscales) on both landscape and portrait sources before shipping.
+      "scale='min(720,iw)':-2:flags=fast_bilinear",
       "-c:v",
       "libx264",
       "-preset",
       "veryfast",
       "-crf",
-      "30",
+      "32",
       "-maxrate",
-      "1000k",
+      "700k",
       "-bufsize",
-      "2000k",
+      "1400k",
       "-c:a",
       "aac",
       "-b:a",
