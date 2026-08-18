@@ -402,7 +402,13 @@ export default function DrawingModal({
         </div>
       </div>
 
-      <div className="flex max-h-[46dvh] shrink-0 flex-col gap-3 overflow-y-auto border-t border-white/10 bg-stone-900 px-3 py-3">
+      <div
+        // Same fix as the main editor panel (see App.tsx) — the app's
+        // global touchmove handler blocks native scroll on touch devices
+        // unless an element opts in via this attribute.
+        data-allow-native-scroll="true"
+        className="flex max-h-[46dvh] shrink-0 flex-col gap-3 overflow-y-auto border-t border-white/10 bg-stone-900 px-3 py-3"
+      >
         <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
           {BRUSHES.map(({ id, icon: Icon, labelMn, labelEn }) => (
             <button

@@ -4100,7 +4100,20 @@ export default function App() {
                       </BookStageScaleContext.Provider>
                     </div>
                   </div>
-                  <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-white/10 bg-white p-3 text-stone-800 md:max-h-none md:h-full md:w-80 md:border-l md:border-t-0">
+                  <div
+                    // The app's global touchmove handler (see the effect
+                    // building shouldAllowNativeScroll) calls
+                    // preventDefault() on every single-finger touch move by
+                    // default, to keep touches from fighting the stage's own
+                    // pinch/pan handling — and only skips that for elements
+                    // (or an ancestor) opted in via this attribute. Without
+                    // it, this panel's overflow-y-auto never actually
+                    // receives a native scroll gesture on touch devices —
+                    // GIF results (or any tall accordion content) render
+                    // fine but can't be reached by scrolling to them.
+                    data-allow-native-scroll="true"
+                    className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-white/10 bg-white p-3 text-stone-800 md:max-h-none md:h-full md:w-80 md:border-l md:border-t-0"
+                  >
                     <React.Suspense
                       fallback={
                         <div className="flex items-center justify-center py-8">
