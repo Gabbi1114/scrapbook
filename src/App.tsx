@@ -1853,6 +1853,38 @@ export default function App() {
   const stageViewportRef = useRef<HTMLDivElement>(null);
   const [stageScale, setStageScale] = useState(1);
 
+  // Same fixed-logical-space-plus-uniform-scale approach as stageScale
+  // above, but for the full-screen single-page editor (fullScreenPageId):
+  // that view previously sized its page container with CSS aspect-ratio/
+  // max-width instead, with no BookStageScaleContext.Provider at all — so
+  // element x/y/width/height (authored in the ~400×600 logical space every
+  // other view uses) rendered unscaled into a container whose real pixel
+  // size rarely matched 400×600, shifting the layout and clipping anything
+  // that fell outside the mismatched bounds. This keeps the full-screen
+  // editor's single page geometrically identical to how it looks
+  // everywhere else — same logical box, same scale mechanism, just fit to
+  // this view's own container.
+  const fsStageViewportRef = useRef<HTMLDivElement>(null);
+  const [fsStageScale, setFsStageScale] = useState(1);
+  useLayoutEffect(() => {
+    if (!fullScreenPageId) return;
+    const el = fsStageViewportRef.current;
+    if (!el) return;
+    const pageW = BOOK_STAGE_WIDTH / 2;
+    const pageH = BOOK_STAGE_HEIGHT;
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w < 8 || h < 8) return;
+      const s = Math.min(w / pageW, h / pageH);
+      setFsStageScale(Math.max(0.08, Math.min(s, 4)));
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, [fullScreenPageId]);
+
   // In-app pinch zoom + pan (replaces browser zoom to prevent iOS crash)
   const [userZoom, setUserZoom] = useState(1);
   const userZoomRef = useRef(1);
@@ -4019,33 +4051,53 @@ export default function App() {
                       tall the tool panel below it gets — previously this
                       region had no floor, so a tall panel could squeeze the
                       page preview down to nothing. */}
-                  <div className="flex min-h-[42dvh] flex-1 items-center justify-center overflow-auto p-4 md:min-h-0 md:p-8">
+                  <div
+                    ref={fsStageViewportRef}
+                    className="flex min-h-[42dvh] flex-1 items-center justify-center overflow-hidden p-4 md:min-h-0 md:p-8"
+                  >
+                    {/* Fixed logical 400×600 box (half of the normal spread's
+                        800×600 stage — see BOOK_STAGE_WIDTH/HEIGHT) scaled
+                        uniformly to fit this view's own container, same
+                        mechanism as the main stage's stageScale. Without
+                        this, element coordinates (authored in that logical
+                        space) rendered unscaled into whatever this
+                        container's real CSS size happened to be. */}
                     <div
-                      className="relative w-full shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl"
+                      className="relative shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl"
                       style={{
-                        aspectRatio: "2 / 3",
-                        maxWidth: "min(90vw, 480px)",
-                        maxHeight: "100%",
+                        width: (BOOK_STAGE_WIDTH / 2) * fsStageScale,
+                        height: BOOK_STAGE_HEIGHT * fsStageScale,
                       }}
                     >
-                      <PageContent
-                        page={fsPage}
-                        isEditing
-                        selectedElementId={selectedElementId}
-                        onSelectElement={setSelectedElementId}
-                        onUpdateElement={updateElement}
-                        onVideoAudibleChange={setVideoAudible}
-                        onDropImageIntoPolaroid={dropImageIntoPolaroid}
-                        isVideoMuted={isVideoMuted}
-                        setVideoMuted={setVideoMuted}
-                        isActive
-                        onSelectPage={() => setSelectedPageId(fullScreenPageId)}
-                        isDemoShare={isDemoShare}
-                        demoHdIntent={demoHdIntent}
-                        demoArmedVideoIds={demoArmedVideoIds}
-                        armDemoVideo={armDemoVideo}
-                        language={uiLanguage}
-                      />
+                      <BookStageScaleContext.Provider value={fsStageScale}>
+                        <div
+                          style={{
+                            width: BOOK_STAGE_WIDTH / 2,
+                            height: BOOK_STAGE_HEIGHT,
+                            transform: `scale(${fsStageScale})`,
+                            transformOrigin: "top left",
+                          }}
+                        >
+                          <PageContent
+                            page={fsPage}
+                            isEditing
+                            selectedElementId={selectedElementId}
+                            onSelectElement={setSelectedElementId}
+                            onUpdateElement={updateElement}
+                            onVideoAudibleChange={setVideoAudible}
+                            onDropImageIntoPolaroid={dropImageIntoPolaroid}
+                            isVideoMuted={isVideoMuted}
+                            setVideoMuted={setVideoMuted}
+                            isActive
+                            onSelectPage={() => setSelectedPageId(fullScreenPageId)}
+                            isDemoShare={isDemoShare}
+                            demoHdIntent={demoHdIntent}
+                            demoArmedVideoIds={demoArmedVideoIds}
+                            armDemoVideo={armDemoVideo}
+                            language={uiLanguage}
+                          />
+                        </div>
+                      </BookStageScaleContext.Provider>
                     </div>
                   </div>
                   <div className="max-h-[45dvh] w-full shrink-0 overflow-y-auto border-t border-white/10 bg-white p-3 text-stone-800 md:max-h-none md:h-full md:w-80 md:border-l md:border-t-0">
