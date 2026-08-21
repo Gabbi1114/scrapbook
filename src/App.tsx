@@ -527,19 +527,19 @@ function pagesHavePendingBlobUrls(pages: PageData[]): boolean {
 }
 
 const DEMO_BLANK_BG_IMAGE_URL =
-  "https://images.unsplash.com/photo-1687957772619-199323adea60"; // dark red grass/branches, moody
+  "https://images.unsplash.com/photo-1687957772619-199323adea60"; // dark red grass/branches, moody — used behind the book, not on the pages themselves
 const DEMO_BLANK_BG_COLOR = "#2a0a0a";
 
 // A completely blank book — no pre-filled text, photos, or stickers — so
 // someone trying the demo starts from an empty page and sees their own
-// edits, not a birthday card that isn't theirs. Same dark-red-toned nature
-// photo + color on every page for a consistent, deliberate starting look.
-function buildDemoBlankPages(maxWidth: number = 900): PageData[] {
-  const bg = buildDemoCdnImageUrl(DEMO_BLANK_BG_IMAGE_URL, maxWidth);
+// edits, not a birthday card that isn't theirs. Front/back covers are a
+// plain dark red to match the ambient background; inside pages are plain
+// white, like a real blank scrapbook.
+function buildDemoBlankPages(): PageData[] {
   return [1, 2, 3, 4].map((n) => ({
     id: `demo-blank-${n}`,
-    background: DEMO_BLANK_BG_COLOR,
-    backgroundImage: bg,
+    background: n === 1 || n === 4 ? DEMO_BLANK_BG_COLOR : "#ffffff",
+    backgroundImage: "",
     pattern: "",
     elements: [],
   }));
@@ -1582,7 +1582,7 @@ export default function App() {
             // getDemoImageMaxWidth() computes: min(pageLogicalWidth × DPR, 1100 on iOS / 1400 on desktop).
             // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
             const demoAssetMaxWidth = getDemoImageMaxWidth();
-            const displayPages = buildDemoBlankPages(demoAssetMaxWidth);
+            const displayPages = buildDemoBlankPages();
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
             setPages(displayPages);
@@ -1595,6 +1595,11 @@ export default function App() {
             setHistory([displayPages]);
             setHistoryIndex(0);
             setShareHint(null);
+            // Land straight in edit mode — same one-click-to-a-tool-panel
+            // feel as box's "Edit a side" / book's "Edit Front Cover", so
+            // this reads as an editing demo immediately instead of needing
+            // an extra tap on the pencil icon just to reveal "Edit Cover".
+            setIsEditing(true);
             // Genuinely local-only now — no network call at all, not even to
             // fetch quota info. setShareStorageUsedBytes already defaults to 0.
             window.setTimeout(() => logDemoDiagnostics("demo load"), 0);
