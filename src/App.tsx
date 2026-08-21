@@ -74,6 +74,7 @@ import {
   releaseCanvasResource,
   unpromoteDemoElement,
 } from "./demoFixes";
+import { loadDemoSnapshot, saveDemoSnapshot } from "./demoLocalPersistence";
 import {
   LANGUAGE_STORAGE_KEY,
   normalizeLanguage,
@@ -549,17 +550,11 @@ function isSandboxDemoShareId(id: string | null | undefined): boolean {
   return isDemoShareId(id);
 }
 
-function getDemoEditUntilIso(id: string): string {
-  const fallback = Date.now() + DEMO_EDIT_WINDOW_MS;
-  if (typeof window === "undefined") return new Date(fallback).toISOString();
-  const key = `scrapbook-demo-opened-at:${id}`;
-  const existing = Number(window.localStorage.getItem(key) || 0);
-  const openedAt =
-    Number.isFinite(existing) && existing > 0 ? existing : Date.now();
-  if (!existing) {
-    window.localStorage.setItem(key, String(openedAt));
-  }
-  return new Date(openedAt + DEMO_EDIT_WINDOW_MS).toISOString();
+// Purely informational — just lets a visitor know editing won't stay open
+// forever. Not persisted anywhere, so it starts fresh on every visit rather
+// than counting down from whenever this browser first opened the demo.
+function getDemoEditUntilIso(): string {
+  return new Date(Date.now() + DEMO_EDIT_WINDOW_MS).toISOString();
 }
 
 function demoCdnWidth(maxWidth: number): number {
@@ -1550,6 +1545,31 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [pages, currentShareId, sharedViewMode]);
 
+  // Autosave the demo sandbox to this browser's own IndexedDB (see
+  // demoLocalPersistence.ts) so an accidental refresh or dropped connection
+  // during editing doesn't throw the visitor's work away. Purely local —
+  // never reaches the server, never visible to any other visitor of the
+  // shared /?share=test link.
+  useEffect(() => {
+    if (!isDemoShare || !currentShareId) return;
+    const id = window.setTimeout(() => {
+      void saveDemoSnapshot(currentShareId, {
+        pages,
+        backgroundMusicUrl,
+        appBackgroundImageUrl,
+        appBackgroundColor,
+      });
+    }, 800);
+    return () => window.clearTimeout(id);
+  }, [
+    isDemoShare,
+    currentShareId,
+    pages,
+    backgroundMusicUrl,
+    appBackgroundImageUrl,
+    appBackgroundColor,
+  ]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get("share") || params.get("id");
@@ -1582,24 +1602,34 @@ export default function App() {
             // getDemoImageMaxWidth() computes: min(pageLogicalWidth × DPR, 1100 on iOS / 1400 on desktop).
             // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
             const demoAssetMaxWidth = getDemoImageMaxWidth();
-            const displayPages = buildDemoBlankPages();
+            const defaultBg = buildDemoCdnImageUrl(
+              DEMO_BLANK_BG_IMAGE_URL,
+              demoAssetMaxWidth,
+            );
+            // Recover from an accidental refresh / dropped connection — a
+            // snapshot saved to this browser's own IndexedDB within the
+            // last day (see demoLocalPersistence.ts), including any photos
+            // or videos the visitor had added. Falls through to the blank
+            // template if there's nothing saved, it's expired, or this is
+            // a first visit.
+            const restored = await loadDemoSnapshot(sid);
+            const displayPages = restored?.pages ?? buildDemoBlankPages();
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
             setPages(displayPages);
-            setBackgroundMusicUrl("");
-            setAppBackgroundImageUrl(
-              buildDemoCdnImageUrl(DEMO_BLANK_BG_IMAGE_URL, demoAssetMaxWidth),
-            );
-            setShareEditUntilIso(getDemoEditUntilIso(sid));
+            setBackgroundMusicUrl(restored?.backgroundMusicUrl ?? "");
+            setAppBackgroundImageUrl(restored?.appBackgroundImageUrl || defaultBg);
+            if (restored?.appBackgroundColor) {
+              setAppBackgroundColor(restored.appBackgroundColor);
+            }
+            setShareEditUntilIso(getDemoEditUntilIso());
             setSharedViewMode(true);
             setHistory([displayPages]);
             setHistoryIndex(0);
             setShareHint(null);
-            // Land straight in edit mode — same one-click-to-a-tool-panel
-            // feel as box's "Edit a side" / book's "Edit Front Cover", so
-            // this reads as an editing demo immediately instead of needing
-            // an extra tap on the pencil icon just to reveal "Edit Cover".
-            setIsEditing(true);
+            // Lands in view-only mode by default, same as box/book — the
+            // pencil button is the clear, single "start editing" entry
+            // point, matching their "Edit a side" / "Editor" buttons.
             // Genuinely local-only now — no network call at all, not even to
             // fetch quota info. setShareStorageUsedBytes already defaults to 0.
             window.setTimeout(() => logDemoDiagnostics("demo load"), 0);
