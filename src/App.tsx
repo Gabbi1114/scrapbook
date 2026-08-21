@@ -365,12 +365,6 @@ const MAX_UPLOAD_IMAGE_SIDE_PX = 2200;
 const MAX_BACKGROUND_UPLOAD_IMAGE_SIDE_PX = 2560;
 const DEMO_CDN_IMAGE_MAX_WIDTH_PX = 820;
 const DEMO_CDN_IOS_IMAGE_MAX_WIDTH_PX = 640;
-// Public-domain birthday music for the fixed demo scrapbook.
-const DEMO_LIGHT_MUSIC_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/0/02/Happy_Birthday_to_You.ogg";
-// CC0 music â€” set DEMO_LIGHT_MUSIC_URL in server/share-server.mjs to add a track.
-const DEMO_LIGHT_VIDEO_URL =
-  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 // Birthday / celebration themed Unsplash photos (must match server/share-server.mjs).
 const DEMO_LIGHT_IMAGE_URLS = [
   "https://images.unsplash.com/photo-1464349153735-7db50ed83c84", // birthday candles
@@ -398,26 +392,6 @@ const DEMO_LIGHT_BACKGROUND_URLS = [
   "https://images.unsplash.com/photo-1517697471339-4aa32003c11a", // soft yellow bokeh
   "https://images.unsplash.com/photo-1546484396-fb3fc6f95f98", // pastel pink
   "https://images.unsplash.com/photo-1549490349-8643362247b5", // confetti bokeh
-] as const;
-
-const DEMO_PAGE_BG_COLORS = [
-  "#f3d7b8",
-  "#ffe0ec",
-  "#dff3ef",
-  "#fff1b8",
-  "#dfebff",
-  "#f6dfef",
-  "#e7f5d8",
-  "#ffe3cc",
-  "#eadffc",
-  "#f7e7c8",
-] as const;
-
-const DEMO_PATTERNS = [
-  "pattern-grid",
-  "pattern-polka",
-  "pattern-lines",
-  "",
 ] as const;
 
 function demoText(
@@ -538,27 +512,6 @@ function demoSticker(
   };
 }
 
-function demoVideo(
-  id: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  rotation: number,
-): PageElement {
-  return {
-    id,
-    type: "video",
-    x,
-    y,
-    rotation,
-    content: DEMO_LIGHT_VIDEO_URL,
-    width,
-    height,
-    zIndex: 24,
-  };
-}
-
 // True while any photo/drawing on the page is still showing its optimistic
 // local blob: preview (upload not yet resolved to a real hosted URL).
 function pagesHavePendingBlobUrls(pages: PageData[]): boolean {
@@ -573,474 +526,22 @@ function pagesHavePendingBlobUrls(pages: PageData[]): boolean {
   );
 }
 
-function fitDemoElementToPage(element: PageElement): PageElement {
-  const xScale = 0.52;
-  const sizeScale = 0.84;
-  return {
-    ...element,
-    x: Math.round(14 + element.x * xScale),
-    width:
-      typeof element.width === "number"
-        ? Math.round(element.width * xScale)
-        : element.width,
-    fontSize:
-      typeof element.fontSize === "number"
-        ? Math.max(12, Math.round(element.fontSize * sizeScale))
-        : element.fontSize,
-  };
-}
+const DEMO_BLANK_BG_IMAGE_URL =
+  "https://images.unsplash.com/photo-1687957772619-199323adea60"; // dark red grass/branches, moody
+const DEMO_BLANK_BG_COLOR = "#2a0a0a";
 
-function buildDemoBirthdayPages(maxWidth: number = 900): PageData[] {
-  const bg = (index: number) => demoCdnBackgroundAt(index, maxWidth);
-  return [
-    {
-      id: "demo-cover",
-      background: "#eac08f",
-      backgroundImage: bg(0),
-      pattern: "pattern-grid",
-      elements: [
-        demoText("d1-title", "Happy\nBirthday\nmy friend", 52, 72, {
-          rotation: -4,
-          fontSize: 48,
-          color: "#7b321e",
-          fontFamily: "var(--font-pacifico)",
-          width: 430,
-          height: 185,
-          fontWeight: "bold",
-          textEffect: "outline",
-          zIndex: 60,
-        }),
-        demoPolaroid("d1-polaroid", 506, 72, 188, 238, 7),
-        demoText("d1-note", "a little book of tiny sparks, big laughs, and favorite days", 92, 318, {
-          rotation: 2,
-          fontSize: 23,
-          color: "#5c3925",
-          width: 430,
-          height: 92,
-        }),
-        demoSticker("d1-stars", "* * *", 534, 358, 34, -8),
-        demoSticker("d1-cake", "🎂", 98, 432, 32, -5),
-        demoSticker("d1-heart", "💛", 636, 434, 34, 8),
-      ],
-    },
-    {
-      id: "demo-page-2",
-      background: "#ffe0ec",
-      backgroundImage: bg(1),
-      pattern: "pattern-polka",
-      elements: [
-        demoText("d2-head", "open when you need a smile", 40, 42, {
-          rotation: -2,
-          fontSize: 36,
-          color: "#b43b64",
-          width: 410,
-          height: 70,
-          fontWeight: "bold",
-        }),
-        demoImage("d2-img-a", 62, 128, 230, 286, -6),
-        demoPolaroid("d2-polaroid", 416, 106, 210, 260, 4),
-        demoText("d2-note", "you make ordinary afternoons feel like confetti", 334, 392, {
-          rotation: -4,
-          fontSize: 22,
-          color: "#8b3151",
-          width: 330,
-          height: 86,
-          fontStyle: "italic",
-        }),
-        demoSticker("d2-bow", "🎀", 636, 54, 28, 12),
-        demoSticker("d2-spark", "✨", 300, 452, 24, 7),
-      ],
-    },
-    {
-      id: "demo-page-3",
-      background: "#dff3ef",
-      backgroundImage: bg(2),
-      pattern: "pattern-lines",
-      elements: [
-        demoPolaroid("d3-polaroid-a", 46, 70, 190, 246, -8),
-        demoPolaroid("d3-polaroid-b", 280, 108, 176, 230, 6),
-        demoImage("d3-img", 520, 70, 160, 210, -2),
-        demoText("d3-title", "favorite silly snapshots", 86, 354, {
-          rotation: 2,
-          fontSize: 34,
-          color: "#21665f",
-          width: 450,
-          height: 72,
-          fontWeight: "bold",
-        }),
-        demoText("d3-caption", "proof that the best plans are usually the least serious ones", 116, 426, {
-          rotation: -1,
-          fontSize: 20,
-          color: "#2d5c55",
-          width: 520,
-          height: 70,
-        }),
-        demoSticker("d3-flowers", "🌸", 616, 338, 30, 10),
-      ],
-    },
-    {
-      id: "demo-page-4",
-      background: "#fff1b8",
-      backgroundImage: bg(3),
-      pattern: "pattern-grid",
-      elements: [
-        demoText("d4-title", "birthday wish list", 54, 44, {
-          rotation: -3,
-          fontSize: 42,
-          color: "#8a5a15",
-          width: 360,
-          height: 72,
-          fontFamily: "var(--font-amatic)",
-          fontWeight: "bold",
-        }),
-        demoText("d4-list", "1. soft mornings\n2. loud laughing\n3. cake with extra frosting\n4. more photos together", 78, 132, {
-          rotation: -1,
-          fontSize: 25,
-          color: "#6b4614",
-          width: 390,
-          height: 220,
-        }),
-        demoPolaroid("d4-polaroid", 500, 126, 174, 230, 8),
-        demoSticker("d4-tape-a", "✦", 464, 104, 25, -14),
-        demoSticker("d4-tape-b", "✦", 626, 338, 25, 8),
-        demoText("d4-small", "all checked, obviously", 408, 412, {
-          rotation: 6,
-          fontSize: 24,
-          color: "#9a5b12",
-          width: 250,
-          height: 62,
-          textEffect: "glow",
-        }),
-      ],
-    },
-    {
-      id: "demo-page-5",
-      background: "#dfebff",
-      backgroundImage: bg(4),
-      pattern: "pattern-polka",
-      elements: [
-        demoVideo("d5-video", 68, 104, 292, 178, -4),
-        demoText("d5-title", "tiny video memory", 86, 48, {
-          rotation: -2,
-          fontSize: 34,
-          color: "#1f5e89",
-          width: 320,
-          height: 64,
-          fontWeight: "bold",
-        }),
-        demoPolaroid("d5-polaroid", 466, 74, 182, 236, 5),
-        demoText("d5-note", "tap the clip, then keep flipping through the party", 78, 318, {
-          rotation: 2,
-          fontSize: 23,
-          color: "#24577a",
-          width: 550,
-          height: 76,
-        }),
-        demoSticker("d5-star", "⭐", 612, 382, 32, -8),
-        demoSticker("d5-heart", "💗", 394, 112, 28, 12),
-      ],
-    },
-    {
-      id: "demo-page-6",
-      background: "#f6dfef",
-      backgroundImage: bg(5),
-      pattern: "pattern-lines",
-      elements: [
-        demoImage("d6-img-a", 42, 78, 196, 246, -5),
-        demoImage("d6-img-b", 296, 58, 164, 210, 4),
-        demoPolaroid("d6-polaroid", 514, 162, 166, 216, -7),
-        demoText("d6-title", "little notes from me", 80, 366, {
-          rotation: -2,
-          fontSize: 38,
-          color: "#9c3a78",
-          width: 360,
-          height: 74,
-          fontWeight: "bold",
-        }),
-        demoText("d6-note", "you are rare, warm, and very easy to celebrate", 352, 396, {
-          rotation: 3,
-          fontSize: 22,
-          color: "#75305e",
-          width: 320,
-          height: 86,
-        }),
-        demoSticker("d6-doodle", "xoxo", 480, 72, 28, -12),
-      ],
-    },
-    {
-      id: "demo-page-7",
-      background: "#e7f5d8",
-      backgroundImage: bg(6),
-      pattern: "pattern-grid",
-      elements: [
-        demoText("d7-title", "our best-day recipe", 56, 50, {
-          rotation: -1,
-          fontSize: 38,
-          color: "#466a25",
-          width: 390,
-          height: 68,
-          fontWeight: "bold",
-        }),
-        demoPolaroid("d7-polaroid-a", 74, 140, 180, 232, -6),
-        demoPolaroid("d7-polaroid-b", 306, 124, 174, 226, 5),
-        demoPolaroid("d7-polaroid-c", 526, 144, 150, 202, -3),
-        demoText("d7-list", "sunlight + snacks + your playlist + absolutely no schedule", 132, 402, {
-          rotation: -2,
-          fontSize: 23,
-          color: "#3c5d1f",
-          width: 500,
-          height: 78,
-        }),
-        demoSticker("d7-leaf", "🍃", 618, 52, 30, 8),
-      ],
-    },
-    {
-      id: "demo-page-8",
-      background: "#ffe3cc",
-      backgroundImage: bg(7),
-      pattern: "pattern-polka",
-      elements: [
-        demoText("d8-title", "party crumbs", 52, 42, {
-          rotation: -4,
-          fontSize: 44,
-          color: "#9a4b20",
-          width: 290,
-          height: 76,
-          fontFamily: "var(--font-pacifico)",
-        }),
-        demoImage("d8-img-a", 64, 132, 238, 190, -5),
-        demoImage("d8-img-b", 388, 94, 228, 286, 6),
-        demoText("d8-note", "the cake disappeared suspiciously fast", 84, 366, {
-          rotation: 2,
-          fontSize: 24,
-          color: "#7b3e20",
-          width: 330,
-          height: 84,
-          fontStyle: "italic",
-        }),
-        demoSticker("d8-candle", "🕯️", 634, 390, 28, 8),
-        demoSticker("d8-confetti", "* *", 316, 108, 30, 14),
-      ],
-    },
-    {
-      id: "demo-page-9",
-      background: "#eadffc",
-      backgroundImage: bg(8),
-      pattern: "pattern-lines",
-      elements: [
-        demoPolaroid("d9-polaroid", 66, 72, 218, 276, -5),
-        demoText("d9-title", "main character energy", 340, 70, {
-          rotation: 3,
-          fontSize: 38,
-          color: "#6744a0",
-          width: 310,
-          height: 120,
-          fontWeight: "bold",
-          textEffect: "outline",
-        }),
-        demoText("d9-note", "today the whole page is yours", 356, 218, {
-          rotation: -2,
-          fontSize: 25,
-          color: "#4f377b",
-          width: 280,
-          height: 92,
-        }),
-        demoImage("d9-img", 398, 352, 230, 118, 4),
-        demoSticker("d9-crown", "👑", 566, 42, 34, 12),
-        demoSticker("d9-heart", "💛", 286, 374, 32, -8),
-      ],
-    },
-    {
-      id: "demo-page-10",
-      background: "#f7e7c8",
-      backgroundImage: bg(9),
-      pattern: "pattern-grid",
-      elements: [
-        demoText("d10-title", "caption corner", 48, 42, {
-          rotation: -2,
-          fontSize: 40,
-          color: "#805a2b",
-          width: 330,
-          height: 72,
-          fontWeight: "bold",
-        }),
-        demoText("d10-note-a", "\"remember this?\"", 78, 132, {
-          rotation: -6,
-          fontSize: 32,
-          color: "#5d4324",
-          width: 250,
-          height: 72,
-          textEffect: "shadow",
-        }),
-        demoText("d10-note-b", "yes. instantly.", 112, 208, {
-          rotation: 4,
-          fontSize: 30,
-          color: "#9c552d",
-          width: 210,
-          height: 64,
-        }),
-        demoPolaroid("d10-polaroid-a", 366, 76, 170, 224, 7),
-        demoPolaroid("d10-polaroid-b", 516, 230, 162, 210, -8),
-        demoSticker("d10-pin", "•", 338, 64, 26, -12),
-        demoSticker("d10-smile", ":)", 92, 390, 30, -3),
-      ],
-    },
-    {
-      id: "demo-page-11",
-      background: "#ffe0ec",
-      backgroundImage: bg(10),
-      pattern: "pattern-polka",
-      elements: [
-        demoImage("d11-img-a", 48, 70, 190, 250, -3),
-        demoImage("d11-img-b", 280, 94, 172, 218, 5),
-        demoVideo("d11-video", 476, 118, 188, 120, -4),
-        demoText("d11-title", "mini highlight reel", 70, 360, {
-          rotation: -2,
-          fontSize: 38,
-          color: "#a33b68",
-          width: 360,
-          height: 72,
-          fontWeight: "bold",
-        }),
-        demoText("d11-note", "photos, video, notes, stickers, frames - the full tiny museum", 356, 356, {
-          rotation: 3,
-          fontSize: 21,
-          color: "#743354",
-          width: 310,
-          height: 105,
-        }),
-        demoSticker("d11-spark", "✨", 650, 66, 26, 8),
-      ],
-    },
-    {
-      id: "demo-page-12",
-      background: "#dff3ef",
-      backgroundImage: bg(11),
-      pattern: "pattern-lines",
-      elements: [
-        demoText("d12-title", "things i love about you", 50, 42, {
-          rotation: -2,
-          fontSize: 36,
-          color: "#27605d",
-          width: 430,
-          height: 74,
-          fontWeight: "bold",
-        }),
-        demoText("d12-list", "your laugh\nhow you notice small things\nyour big soft heart\nthe way you make people feel included", 72, 132, {
-          rotation: 1,
-          fontSize: 24,
-          color: "#244f4b",
-          width: 430,
-          height: 250,
-        }),
-        demoPolaroid("d12-polaroid", 510, 104, 172, 226, 6),
-        demoSticker("d12-flower", "🌼", 546, 368, 30, -7),
-        demoText("d12-bottom", "never change the sweet parts", 118, 424, {
-          rotation: -3,
-          fontSize: 24,
-          color: "#2d6960",
-          width: 410,
-          height: 64,
-          fontStyle: "italic",
-        }),
-      ],
-    },
-    {
-      id: "demo-page-13",
-      background: "#fff1b8",
-      backgroundImage: bg(12),
-      pattern: "pattern-grid",
-      elements: [
-        demoPolaroid("d13-polaroid-a", 50, 70, 176, 228, -7),
-        demoPolaroid("d13-polaroid-b", 250, 92, 176, 228, 4),
-        demoPolaroid("d13-polaroid-c", 494, 74, 176, 228, 7),
-        demoText("d13-title", "three cheers for you", 102, 360, {
-          rotation: -2,
-          fontSize: 40,
-          color: "#8a5a15",
-          width: 500,
-          height: 74,
-          fontFamily: "var(--font-amatic)",
-          fontWeight: "bold",
-        }),
-        demoText("d13-note", "one for your past, one for today, one for every bright thing coming", 112, 424, {
-          rotation: 1,
-          fontSize: 22,
-          color: "#684412",
-          width: 500,
-          height: 70,
-        }),
-        demoSticker("d13-stars", "* * *", 334, 316, 28, -4),
-      ],
-    },
-    {
-      id: "demo-page-14",
-      background: "#dfebff",
-      backgroundImage: bg(13),
-      pattern: "pattern-polka",
-      elements: [
-        demoText("d14-title", "one last wish", 58, 54, {
-          rotation: -3,
-          fontSize: 48,
-          color: "#1d5d85",
-          width: 360,
-          height: 86,
-          fontFamily: "var(--font-pacifico)",
-        }),
-        demoImage("d14-img", 430, 74, 230, 298, 5),
-        demoText("d14-note", "may this year bring you places that feel kind, people who feel easy, and days worth saving.", 70, 170, {
-          rotation: 1,
-          fontSize: 25,
-          color: "#235b78",
-          width: 330,
-          height: 210,
-        }),
-        demoSticker("d14-tape", "✦", 402, 54, 25, -8),
-        demoSticker("d14-moon", "☾", 128, 408, 30, 5),
-        demoText("d14-small", "with love", 460, 408, {
-          rotation: -4,
-          fontSize: 30,
-          color: "#1e4f70",
-          width: 180,
-          height: 60,
-          textDecoration: "underline",
-        }),
-      ],
-    },
-    {
-      id: "demo-back-cover",
-      background: "#eac08f",
-      backgroundImage: bg(14),
-      pattern: "pattern-grid",
-      elements: [
-        demoText("d15-title", "the end\nfor now", 126, 118, {
-          rotation: -4,
-          fontSize: 58,
-          color: "#7b321e",
-          fontFamily: "var(--font-pacifico)",
-          width: 360,
-          height: 168,
-          fontWeight: "bold",
-          textEffect: "outline",
-        }),
-        demoPolaroid("d15-polaroid", 504, 98, 170, 224, 6),
-        demoText("d15-note", "flip back anytime you need a birthday-sized hug", 124, 336, {
-          rotation: 2,
-          fontSize: 26,
-          color: "#5c3925",
-          width: 470,
-          height: 90,
-        }),
-        demoSticker("d15-spark", "*", 92, 82, 42, 12),
-        demoSticker("d15-heart", "💛", 604, 390, 34, -10),
-      ],
-    },
-  ].map((page, pageIndex) => ({
-    ...page,
-    background: DEMO_PAGE_BG_COLORS[pageIndex % DEMO_PAGE_BG_COLORS.length],
-    backgroundImage: undefined,
-    pattern: page.pattern || DEMO_PATTERNS[pageIndex % DEMO_PATTERNS.length],
-    elements: page.elements.map(fitDemoElementToPage),
+// A completely blank book — no pre-filled text, photos, or stickers — so
+// someone trying the demo starts from an empty page and sees their own
+// edits, not a birthday card that isn't theirs. Same dark-red-toned nature
+// photo + color on every page for a consistent, deliberate starting look.
+function buildDemoBlankPages(maxWidth: number = 900): PageData[] {
+  const bg = buildDemoCdnImageUrl(DEMO_BLANK_BG_IMAGE_URL, maxWidth);
+  return [1, 2, 3, 4].map((n) => ({
+    id: `demo-blank-${n}`,
+    background: DEMO_BLANK_BG_COLOR,
+    backgroundImage: bg,
+    pattern: "",
+    elements: [],
   }));
 }
 
@@ -1097,61 +598,6 @@ function demoFallbackImageFor(src: string, maxWidth: number): string {
     74,
   );
   return fallback === src ? DEMO_IMAGE_PLACEHOLDER : fallback;
-}
-
-function upgradeDemoPagesForHd(
-  pages: PageData[],
-  maxWidth: number = 1400,
-): PageData[] {
-  return pages.map((page, pageIndex) => ({
-    ...page,
-    backgroundImage: demoCdnBackgroundAt(pageIndex, maxWidth),
-    elements: page.elements.map((element, elementIndex) => {
-      if (element.type === "video") {
-        return {
-          ...element,
-          content: DEMO_LIGHT_VIDEO_URL,
-          width: Math.min(element.width || 300, 240),
-          height: Math.min(element.height || 160, 136),
-        };
-      }
-
-      const assetIndex = pageIndex * 5 + elementIndex;
-      if (element.type === "image") {
-        return {
-          ...element,
-          content:
-            element.content === "__POLAROID__"
-              ? element.content
-              : demoCdnImageAt(assetIndex, maxWidth),
-          frameImage: element.frameImage
-            ? demoCdnImageAt(assetIndex + 2, maxWidth)
-            : element.frameImage,
-        };
-      }
-
-      if (element.type === "sticker" && element.content === "__POLAROID__") {
-        return {
-          ...element,
-          frameImage: demoCdnImageAt(assetIndex + 2, maxWidth),
-        };
-      }
-
-      if (element.type === "sticker" && /^https?:\/\//i.test(element.content)) {
-        return {
-          ...element,
-          content: demoCdnImageAt(assetIndex, maxWidth),
-        };
-      }
-
-      return {
-        ...element,
-        frameImage: element.frameImage
-          ? demoCdnImageAt(assetIndex + 2, maxWidth)
-          : element.frameImage,
-      };
-    }),
-  }));
 }
 
 function isIosWebkitDevice(): boolean {
@@ -2136,13 +1582,13 @@ export default function App() {
             // getDemoImageMaxWidth() computes: min(pageLogicalWidth × DPR, 1100 on iOS / 1400 on desktop).
             // This prevents loading 2200px Unsplash bitmaps on a 390px-wide iPhone screen.
             const demoAssetMaxWidth = getDemoImageMaxWidth();
-            const displayPages = buildDemoBirthdayPages(demoAssetMaxWidth);
+            const displayPages = buildDemoBlankPages(demoAssetMaxWidth);
             setShareLinkLoadError(null);
             setCurrentShareId(sid);
             setPages(displayPages);
-            setBackgroundMusicUrl(DEMO_LIGHT_MUSIC_URL);
+            setBackgroundMusicUrl("");
             setAppBackgroundImageUrl(
-              demoCdnBackgroundAt(99, demoAssetMaxWidth),
+              buildDemoCdnImageUrl(DEMO_BLANK_BG_IMAGE_URL, demoAssetMaxWidth),
             );
             setShareEditUntilIso(getDemoEditUntilIso(sid));
             setSharedViewMode(true);
