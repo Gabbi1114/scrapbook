@@ -1083,7 +1083,12 @@ export default function App() {
     const audio = directAudioRef.current;
     if (audio) {
       audio.volume = audibleVideoIds.length > 0 ? 0.18 : 0.42;
-      void audio.play().catch(() => {});
+      // Guard against redundant .play() calls on media that's already
+      // playing — calling play() again mid-playback is what produced the
+      // audible restart/glitch, since several code paths (below, plus the
+      // first-interaction listeners) can legitimately ask to "start" music
+      // that's already going.
+      if (audio.paused) void audio.play().catch(() => {});
     }
     const p = ytPlayerRef.current;
     if (!p) return;
@@ -1091,25 +1096,42 @@ export default function App() {
     p.playVideo?.();
   }, [audibleVideoIds.length]);
 
+  // Always call the latest version without re-registering the listeners
+  // below on every change (tryStartBackgroundMusic's identity changes with
+  // audibleVideoIds.length, which used to be a dependency here — that
+  // re-armed a fresh "first interaction" listener on every video mute/
+  // visibility change, so a later tap could call tryStartBackgroundMusic
+  // again well after music had already started, restarting it).
+  const tryStartBackgroundMusicRef = useRef(tryStartBackgroundMusic);
   useEffect(() => {
+    tryStartBackgroundMusicRef.current = tryStartBackgroundMusic;
+  }, [tryStartBackgroundMusic]);
+
+  useEffect(() => {
+    // A single tap fires pointerdown, touchstart, AND click as separate
+    // event types — each was independently {once:true}, so one physical
+    // gesture called tryStartBackgroundMusic up to three times back to
+    // back, each issuing its own .play() while the previous one (loaded
+    // with preload="none", so the first play() also kicks off the fetch)
+    // was still starting up. That's the "starts again from the beginning
+    // with a glitch" symptom. Aborting the rest as soon as the first one
+    // fires means only one of the three ever actually runs.
+    const controller = new AbortController();
     const onFirstInteract = () => {
+      controller.abort();
       setHasAudioGesture(true);
-      tryStartBackgroundMusic();
+      tryStartBackgroundMusicRef.current();
     };
-    window.addEventListener("pointerdown", onFirstInteract, { once: true });
-    window.addEventListener("click", onFirstInteract, { once: true });
-    window.addEventListener("keydown", onFirstInteract, { once: true });
+    const opts = { once: true, signal: controller.signal };
+    window.addEventListener("pointerdown", onFirstInteract, opts);
+    window.addEventListener("click", onFirstInteract, opts);
+    window.addEventListener("keydown", onFirstInteract, opts);
     window.addEventListener("touchstart", onFirstInteract, {
-      once: true,
+      ...opts,
       passive: true,
     });
-    return () => {
-      window.removeEventListener("pointerdown", onFirstInteract);
-      window.removeEventListener("click", onFirstInteract);
-      window.removeEventListener("keydown", onFirstInteract);
-      window.removeEventListener("touchstart", onFirstInteract);
-    };
-  }, [tryStartBackgroundMusic]);
+    return () => controller.abort();
+  }, []);
 
   const directAudioUrl = isDirectAudioUrl(backgroundMusicUrl)
     ? backgroundMusicUrl.trim()
@@ -4483,6 +4505,63 @@ function PageContent({
   );
 }
 
+// Grabs the actual first frame of a video (demo videos are always same-
+// origin blob: URLs from a local upload, so this never hits a CORS wall)
+// and returns it as a small JPEG data URL to use as a <video poster> —
+// standing in for the browser's native "show the first frame" behavior,
+// which we can't rely on here since the real <video>'s src is deliberately
+// withheld until the visitor taps to preview (see isDemoVideoReady below).
+function captureVideoFirstFrame(
+  url: string,
+  maxWidth = 480,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    let settled = false;
+    const finish = (result: string | null) => {
+      if (settled) return;
+      settled = true;
+      video.removeAttribute("src");
+      video.load();
+      resolve(result);
+    };
+    const capture = () => {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh) return finish(null);
+      const w = Math.min(maxWidth, vw);
+      const h = Math.round(vh * (w / vw));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return finish(null);
+      try {
+        ctx.drawImage(video, 0, 0, w, h);
+        finish(canvas.toDataURL("image/jpeg", 0.72));
+      } catch {
+        finish(null);
+      }
+    };
+    video.onloadeddata = () => {
+      // Some browsers render the currentTime=0 frame as black until an
+      // explicit seek nudges the decoder forward.
+      try {
+        video.currentTime = Math.min(0.05, (video.duration || 1) / 2);
+      } catch {
+        capture();
+      }
+    };
+    video.onseeked = capture;
+    video.onerror = () => finish(null);
+    window.setTimeout(() => finish(null), 4000);
+    video.src = url;
+  });
+}
+
 function DraggableElement({
   element,
   isEditing,
@@ -4524,6 +4603,7 @@ function DraggableElement({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoVisible, setIsVideoVisible] = useState(false);
   const [isDemoVideoDomArmed, setIsDemoVideoDomArmed] = useState(false);
+  const [demoVideoPoster, setDemoVideoPoster] = useState<string | null>(null);
   const isPolaroid =
     element.type === "sticker" && element.content === POLAROID_STICKER_TOKEN;
   const lastReportedAudibleRef = useRef(false);
@@ -4580,6 +4660,21 @@ function DraggableElement({
       onSelect,
     ],
   );
+
+  // Real poster thumbnail for the demo's "tap to preview" gate — the actual
+  // <video>'s src is withheld until tap, so without this the poster would
+  // just be blank. Recomputes only when the underlying content URL changes.
+  useEffect(() => {
+    if (!isDemoShare || element.type !== "video") return;
+    let cancelled = false;
+    setDemoVideoPoster(null);
+    void captureVideoFirstFrame(element.content).then((dataUrl) => {
+      if (!cancelled) setDemoVideoPoster(dataUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemoShare, element.type, element.content]);
 
   const startResize = (
     e: React.PointerEvent,
@@ -4953,11 +5048,7 @@ function DraggableElement({
           <video
             ref={videoRef}
             src={!isDemoShare || isDemoVideoReady ? element.content : undefined}
-            poster={
-              isDemoShare
-                ? demoImageVariant(DEMO_LIGHT_IMAGE_URLS[1], 640, 72)
-                : undefined
-            }
+            poster={isDemoShare ? (demoVideoPoster ?? undefined) : undefined}
             autoPlay={!isDemoShare}
             loop
             muted={videoMuted}
