@@ -4200,7 +4200,6 @@ function FlipPage({
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
             language={language}
-            isPageFacingViewer={isInteractive && !isFlipped}
           />
 
           {/* Static spine shadow */}
@@ -4261,7 +4260,6 @@ function FlipPage({
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
             language={language}
-            isPageFacingViewer={isInteractive && isFlipped}
           />
 
           {/* Static spine shadow */}
@@ -4392,7 +4390,6 @@ function PageContent({
   demoArmedVideoIds,
   armDemoVideo,
   language,
-  isPageFacingViewer,
 }: {
   page?: PageData;
   isEditing: boolean;
@@ -4423,12 +4420,6 @@ function PageContent({
   demoArmedVideoIds: Record<string, boolean>;
   armDemoVideo: (id: string) => void;
   language: Language;
-  /** Whether this exact page (front or back face of a flipping leaf) is
-   *  the one actually facing the viewer right now. Only meaningful — and
-   *  only passed — from FlipPage's 3D book view; every other caller (the
-   *  editing spread, the full-screen page editor) always shows its page
-   *  flat-on, so it's left undefined there and treated as always-facing. */
-  isPageFacingViewer?: boolean;
 }) {
   if (!page) return <div className="w-full h-full bg-stone-200" />;
   const useClassBackground = page.background.startsWith("bg-");
@@ -4496,7 +4487,6 @@ function PageContent({
           isDemoVideoArmed={Boolean(demoArmedVideoIds[el.id])}
           armDemoVideo={armDemoVideo}
           language={language}
-          isPageFacingViewer={isPageFacingViewer}
         />
       ))}
       {/* Freehand ink drawn on the whole page — a fixed overlay, not a
@@ -4588,7 +4578,6 @@ function DraggableElement({
   isDemoVideoArmed,
   armDemoVideo,
   language,
-  isPageFacingViewer,
 }: {
   key?: React.Key;
   element: PageElement;
@@ -4606,14 +4595,19 @@ function DraggableElement({
   isDemoVideoArmed: boolean;
   armDemoVideo: (id: string) => void;
   language: Language;
-  isPageFacingViewer?: boolean;
 }) {
   const stageScale = useBookStageScale();
   const inv = stageScale > 0 ? 1 / stageScale : 1;
   const dragControls = useDragControls();
   const [isTransforming, setIsTransforming] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [isVideoVisible, setIsVideoVisible] = useState(false);
+  // Playback is driven entirely by explicit user clicks (see the video's
+  // onClick below) — not by whether the page is currently facing the
+  // viewer. A page turn must never pause/resume a video someone started;
+  // this is the single source of truth for both "is it audible" and
+  // rendering the pause/play affordance.
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoFrameRef = useRef<HTMLDivElement | null>(null);
   const [isDemoVideoDomArmed, setIsDemoVideoDomArmed] = useState(false);
   const [demoVideoPoster, setDemoVideoPoster] = useState<string | null>(null);
   const isPolaroid =
@@ -4656,9 +4650,18 @@ function DraggableElement({
       armDemoVideo(element.id);
       setIsDemoVideoDomArmed(true);
       const el = videoRef.current;
-      if (el && !el.getAttribute("src")) {
-        el.src = element.content;
-        el.load();
+      if (el) {
+        if (!el.getAttribute("src")) {
+          el.src = element.content;
+          el.load();
+        }
+        // "Tap to preview" means exactly that — one tap plays it, with
+        // sound, immediately. Calling play() here (still inside the
+        // originating pointerdown/click) keeps it within the user-gesture
+        // window browsers require to allow unmuted playback.
+        el.muted = false;
+        setVideoMuted(false);
+        void el.play().catch(() => {});
       }
       logDemoDiagnostics("demo video armed");
     },
@@ -4670,8 +4673,68 @@ function DraggableElement({
       isDemoShare,
       isEditing,
       onSelect,
+      setVideoMuted,
     ],
   );
+
+  // Single source of truth for "the video frame was activated" — arms it
+  // (demo, first tap) or toggles play/pause with sound (every tap after).
+  // Called from the document-level click workaround below, which is the
+  // reliable path; also wired as a native fallback on the frame itself for
+  // contexts where hit-testing isn't affected (see that effect for why).
+  const handleVideoFrameActivate = useCallback(() => {
+    if (isDemoShare && !isDemoVideoReady) {
+      armCurrentDemoVideo();
+      return;
+    }
+    if (isEditing) onSelect();
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.muted = false;
+      setVideoMuted(false);
+      void el.play().catch(() => {});
+    } else if (el.muted) {
+      // Already playing (e.g. autoplayed muted) — first activation just
+      // turns the sound on rather than pausing it.
+      el.muted = false;
+      setVideoMuted(false);
+    } else {
+      el.pause();
+    }
+  }, [
+    isDemoShare,
+    isDemoVideoReady,
+    armCurrentDemoVideo,
+    isEditing,
+    onSelect,
+    setVideoMuted,
+  ]);
+
+  // WORKAROUND: this frame sits nested inside the book's animated
+  // preserve-3d/rotateY flip hierarchy, and in that context some browsers'
+  // native click hit-testing resolves the wrong ancestor (several levels
+  // up) as the event target — the frame that's actually visually on top
+  // never receives the click at all, so its own onClick silently never
+  // fires. document.elementsFromPoint reports the true paint-order stack
+  // regardless of that native target-resolution bug, so it's used here to
+  // detect "was this frame actually the one tapped" and handle it directly.
+  // Runs in the capture phase so it wins over (and stops) any handler a
+  // correctly-resolved native click would otherwise also reach.
+  useEffect(() => {
+    if (element.type !== "video") return;
+    const onDocumentClick = (e: MouseEvent) => {
+      const frame = videoFrameRef.current;
+      if (!frame) return;
+      const stack = document.elementsFromPoint(e.clientX, e.clientY);
+      if (!stack.includes(frame)) return;
+      e.stopPropagation();
+      e.preventDefault();
+      handleVideoFrameActivate();
+    };
+    document.addEventListener("click", onDocumentClick, true);
+    return () => document.removeEventListener("click", onDocumentClick, true);
+  }, [element.type, handleVideoFrameActivate]);
 
   // Real poster thumbnail for the demo's "tap to preview" gate — the actual
   // <video>'s src is withheld until tap, so without this the poster would
@@ -4804,59 +4867,19 @@ function DraggableElement({
     onVideoAudibleChangeRef.current = onVideoAudibleChange;
   }, [onVideoAudibleChange]);
 
+  // Audible reporting (for ducking background music) now simply mirrors
+  // real playback state — isPlaying is set from the video's own onPlay/
+  // onPause events, so this can never drift from what's actually audible,
+  // and it stays true across a page turn exactly because nothing here
+  // pauses the video anymore.
   useEffect(() => {
     if (element.type !== "video") return;
-    // FlipPage's book view passes isPageFacingViewer explicitly and that
-    // takes over as the sole visibility signal instead (see below) — this
-    // observer only matters for the other callers (editing spread,
-    // full-screen page editor), so skip it entirely there to avoid wasted
-    // observer churn.
-    if (isPageFacingViewer !== undefined) return;
-    const el = videoRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        setIsVideoVisible(Boolean(entry?.isIntersecting));
-      },
-      { threshold: 0.55 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [element.type, element.id, isPageFacingViewer]);
-
-  // In FlipPage's 3D book view, a page's IntersectionObserver reading is
-  // unreliable while its leaf is mid-flip (or has just settled) — the
-  // element sits behind an animated rotateY/rotateX CSS transform, and the
-  // browser's projected intersection ratio can flicker across the 0.55
-  // threshold as the spring animates or overshoots. That's what caused
-  // videos to not respond right after turning to a new page, or to play
-  // for a second and then pause. isPageFacingViewer is computed directly
-  // from the deterministic currentLeaf/isFlipped state instead, with no
-  // animation-timing dependency, so when FlipPage provides it, it wins.
-  const effectiveVideoVisible =
-    isPageFacingViewer !== undefined ? isPageFacingViewer : isVideoVisible;
-
-  useEffect(() => {
-    if (element.type !== "video") return;
-    // Video should count as "audible" only while its page is actually visible.
-    const audible =
-      (!isDemoShare || isDemoVideoReady) &&
-      !videoMuted &&
-      effectiveVideoVisible &&
-      !document.hidden;
+    const audible = isPlaying && !videoMuted && !document.hidden;
     if (lastReportedAudibleRef.current !== audible) {
       onVideoAudibleChangeRef.current(element.id, audible);
       lastReportedAudibleRef.current = audible;
     }
-  }, [
-    element.type,
-    element.id,
-    isDemoShare,
-    isDemoVideoReady,
-    effectiveVideoVisible,
-    videoMuted,
-  ]);
+  }, [element.type, element.id, isPlaying, videoMuted]);
 
   useEffect(
     () => () => {
@@ -4876,25 +4899,22 @@ function DraggableElement({
     [element.type, element.id, isDemoShare],
   );
 
+  // The only thing that ever pauses a video the user started is the whole
+  // browser tab going into the background — a real resource/battery
+  // concern, unlike a mere page turn. Deliberately does not auto-resume
+  // when the tab comes back: resuming is the user's call, via another
+  // click on the frame.
   useEffect(() => {
     if (element.type !== "video") return;
     const el = videoRef.current;
     if (!el) return;
-    const syncPlayback = () => {
-      const shouldPlay =
-        (!isDemoShare || isDemoVideoReady) &&
-        effectiveVideoVisible &&
-        !document.hidden;
-      if (shouldPlay) {
-        void el.play().catch(() => {});
-      } else {
-        el.pause();
-      }
+    const onVisibilityChange = () => {
+      if (document.hidden) el.pause();
     };
-    syncPlayback();
-    document.addEventListener("visibilitychange", syncPlayback);
-    return () => document.removeEventListener("visibilitychange", syncPlayback);
-  }, [element.type, isDemoShare, isDemoVideoReady, effectiveVideoVisible]);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [element.type]);
 
   return (
     <motion.div
@@ -4903,15 +4923,11 @@ function DraggableElement({
       dragListener={false}
       dragMomentum={false}
       onPointerDown={(e) => {
-        if (
-          !isEditing &&
-          isDemoShare &&
-          element.type === "video" &&
-          !isDemoVideoReady
-        ) {
-          armCurrentDemoVideo(e);
-          return;
-        }
+        // Video activation (arm + play/pause) is handled entirely by the
+        // document-level click workaround in this element's own effect —
+        // see handleVideoFrameActivate. Doing it here too, on pointerdown,
+        // used to race with that: whichever fired second would toggle an
+        // already-armed, already-playing video straight back to paused.
         if (!isEditing || isTransforming) return;
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-transform-handle="true"]')) return;
@@ -5076,7 +5092,7 @@ function DraggableElement({
         </>
       )}
       {element.type === "video" && (
-        <div className="relative inline-block">
+        <div className="relative inline-block" ref={videoFrameRef}>
           <video
             ref={videoRef}
             src={!isDemoShare || isDemoVideoReady ? element.content : undefined}
@@ -5091,32 +5107,14 @@ function DraggableElement({
               width: element.width || 320,
               height: element.height || 180,
             }}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isEditing) onSelect();
-              if (isDemoShare && !isDemoVideoReady) {
-                armCurrentDemoVideo(e);
-                return;
-              }
-              const el = videoRef.current;
-              if (!el) return;
-              const nextMuted = !videoMuted;
-              el.muted = nextMuted;
-              setVideoMuted(nextMuted);
-              // Apply ducking immediately on user click (don't wait for effect tick).
-              onVideoAudibleChange(element.id, !nextMuted);
-              void el.play().catch(() => {});
-            }}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => setIsPlaying(false)}
           />
           {isDemoShare && !isDemoVideoReady && (
-            <button
-              type="button"
-              className="absolute inset-0 z-20 flex items-center justify-center rounded-sm bg-black/20 text-xs font-semibold text-white pointer-events-auto"
-              onPointerDown={armCurrentDemoVideo}
-              onClick={armCurrentDemoVideo}
-            >
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-sm bg-black/20 text-xs font-semibold text-white">
               {language === "en" ? "Tap to preview" : "Урьдчилж харах"}
-            </button>
+            </div>
           )}
         </div>
       )}
