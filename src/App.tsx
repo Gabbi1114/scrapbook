@@ -4200,6 +4200,7 @@ function FlipPage({
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
             language={language}
+            isPageFacingViewer={isInteractive && !isFlipped}
           />
 
           {/* Static spine shadow */}
@@ -4260,6 +4261,7 @@ function FlipPage({
             demoArmedVideoIds={demoArmedVideoIds}
             armDemoVideo={armDemoVideo}
             language={language}
+            isPageFacingViewer={isInteractive && isFlipped}
           />
 
           {/* Static spine shadow */}
@@ -4390,6 +4392,7 @@ function PageContent({
   demoArmedVideoIds,
   armDemoVideo,
   language,
+  isPageFacingViewer,
 }: {
   page?: PageData;
   isEditing: boolean;
@@ -4420,6 +4423,12 @@ function PageContent({
   demoArmedVideoIds: Record<string, boolean>;
   armDemoVideo: (id: string) => void;
   language: Language;
+  /** Whether this exact page (front or back face of a flipping leaf) is
+   *  the one actually facing the viewer right now. Only meaningful — and
+   *  only passed — from FlipPage's 3D book view; every other caller (the
+   *  editing spread, the full-screen page editor) always shows its page
+   *  flat-on, so it's left undefined there and treated as always-facing. */
+  isPageFacingViewer?: boolean;
 }) {
   if (!page) return <div className="w-full h-full bg-stone-200" />;
   const useClassBackground = page.background.startsWith("bg-");
@@ -4487,6 +4496,7 @@ function PageContent({
           isDemoVideoArmed={Boolean(demoArmedVideoIds[el.id])}
           armDemoVideo={armDemoVideo}
           language={language}
+          isPageFacingViewer={isPageFacingViewer}
         />
       ))}
       {/* Freehand ink drawn on the whole page — a fixed overlay, not a
@@ -4578,6 +4588,7 @@ function DraggableElement({
   isDemoVideoArmed,
   armDemoVideo,
   language,
+  isPageFacingViewer,
 }: {
   key?: React.Key;
   element: PageElement;
@@ -4595,6 +4606,7 @@ function DraggableElement({
   isDemoVideoArmed: boolean;
   armDemoVideo: (id: string) => void;
   language: Language;
+  isPageFacingViewer?: boolean;
 }) {
   const stageScale = useBookStageScale();
   const inv = stageScale > 0 ? 1 / stageScale : 1;
@@ -4794,6 +4806,12 @@ function DraggableElement({
 
   useEffect(() => {
     if (element.type !== "video") return;
+    // FlipPage's book view passes isPageFacingViewer explicitly and that
+    // takes over as the sole visibility signal instead (see below) — this
+    // observer only matters for the other callers (editing spread,
+    // full-screen page editor), so skip it entirely there to avoid wasted
+    // observer churn.
+    if (isPageFacingViewer !== undefined) return;
     const el = videoRef.current;
     if (!el) return;
     const io = new IntersectionObserver(
@@ -4805,7 +4823,19 @@ function DraggableElement({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [element.type, element.id]);
+  }, [element.type, element.id, isPageFacingViewer]);
+
+  // In FlipPage's 3D book view, a page's IntersectionObserver reading is
+  // unreliable while its leaf is mid-flip (or has just settled) — the
+  // element sits behind an animated rotateY/rotateX CSS transform, and the
+  // browser's projected intersection ratio can flicker across the 0.55
+  // threshold as the spring animates or overshoots. That's what caused
+  // videos to not respond right after turning to a new page, or to play
+  // for a second and then pause. isPageFacingViewer is computed directly
+  // from the deterministic currentLeaf/isFlipped state instead, with no
+  // animation-timing dependency, so when FlipPage provides it, it wins.
+  const effectiveVideoVisible =
+    isPageFacingViewer !== undefined ? isPageFacingViewer : isVideoVisible;
 
   useEffect(() => {
     if (element.type !== "video") return;
@@ -4813,7 +4843,7 @@ function DraggableElement({
     const audible =
       (!isDemoShare || isDemoVideoReady) &&
       !videoMuted &&
-      isVideoVisible &&
+      effectiveVideoVisible &&
       !document.hidden;
     if (lastReportedAudibleRef.current !== audible) {
       onVideoAudibleChangeRef.current(element.id, audible);
@@ -4824,7 +4854,7 @@ function DraggableElement({
     element.id,
     isDemoShare,
     isDemoVideoReady,
-    isVideoVisible,
+    effectiveVideoVisible,
     videoMuted,
   ]);
 
@@ -4852,7 +4882,9 @@ function DraggableElement({
     if (!el) return;
     const syncPlayback = () => {
       const shouldPlay =
-        (!isDemoShare || isDemoVideoReady) && isVideoVisible && !document.hidden;
+        (!isDemoShare || isDemoVideoReady) &&
+        effectiveVideoVisible &&
+        !document.hidden;
       if (shouldPlay) {
         void el.play().catch(() => {});
       } else {
@@ -4862,7 +4894,7 @@ function DraggableElement({
     syncPlayback();
     document.addEventListener("visibilitychange", syncPlayback);
     return () => document.removeEventListener("visibilitychange", syncPlayback);
-  }, [element.type, isDemoShare, isDemoVideoReady, isVideoVisible]);
+  }, [element.type, isDemoShare, isDemoVideoReady, effectiveVideoVisible]);
 
   return (
     <motion.div
