@@ -4,7 +4,7 @@
  * `node server/share-server.mjs` alone on port 3001.
  */
 import express from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -64,6 +64,10 @@ const r2 = hasR2Config
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const app = express();
+// Render (and most PaaS hosts) sit behind a reverse proxy — without this, req.ip is
+// always the proxy's own internal address for every request, which would make the
+// per-IP studio-password lockout below either lock out everyone at once or nobody.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "80mb" }));
 app.use(express.urlencoded({ extended: true, limit: "80mb" }));
 app.use((req, res, next) => {
@@ -89,6 +93,64 @@ app.use((req, res, next) => {
   next();
 });
 
+
+// ---------------------------------------------------------------------------
+// POST /api/studio/unlock — the studio password check, moved server-side so the
+// real value never ships inside the built JS bundle (a VITE_-prefixed env var
+// would be readable in plain text via dev tools). The frontend only ever gets a
+// yes/no back. 2 wrong guesses locks that IP out for 24h — CORS alone doesn't
+// stop a direct script from hammering this endpoint, so this does.
+// ---------------------------------------------------------------------------
+const STUDIO_PASSWORD = process.env.STUDIO_PASSWORD || "";
+const MAX_FAILED_UNLOCK_ATTEMPTS = 2;
+const UNLOCK_LOCKOUT_MS = 24 * 60 * 60 * 1000;
+const unlockAttemptsByIp = new Map(); // ip -> { fails: number, lockedUntil: number | null }
+
+function passwordMatches(candidate) {
+  if (typeof candidate !== "string" || !STUDIO_PASSWORD) return false;
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(STUDIO_PASSWORD);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function getUnlockState(ip) {
+  let state = unlockAttemptsByIp.get(ip);
+  if (!state) {
+    state = { fails: 0, lockedUntil: null };
+    unlockAttemptsByIp.set(ip, state);
+  }
+  if (state.lockedUntil && Date.now() >= state.lockedUntil) {
+    state.fails = 0;
+    state.lockedUntil = null;
+  }
+  return state;
+}
+
+app.post("/api/studio/unlock", (req, res) => {
+  if (!STUDIO_PASSWORD) return res.status(503).json({ error: "not_configured" });
+
+  const state = getUnlockState(req.ip);
+  if (state.lockedUntil) {
+    const retryAfterMs = state.lockedUntil - Date.now();
+    res.set("Retry-After", String(Math.ceil(retryAfterMs / 1000)));
+    return res.status(429).json({ error: "locked_out", retryAfterMs });
+  }
+
+  if (!passwordMatches(req.body?.password)) {
+    state.fails += 1;
+    if (state.fails >= MAX_FAILED_UNLOCK_ATTEMPTS) {
+      state.lockedUntil = Date.now() + UNLOCK_LOCKOUT_MS;
+      res.set("Retry-After", String(Math.ceil(UNLOCK_LOCKOUT_MS / 1000)));
+      return res.status(429).json({ error: "locked_out", retryAfterMs: UNLOCK_LOCKOUT_MS });
+    }
+    return res
+      .status(401)
+      .json({ error: "wrong_password", attemptsRemaining: MAX_FAILED_UNLOCK_ATTEMPTS - state.fails });
+  }
+
+  unlockAttemptsByIp.delete(req.ip);
+  res.json({ ok: true });
+});
 
 function shareFilePath(id) {
   return path.join(DATA_DIR, `${path.basename(id)}.json`);

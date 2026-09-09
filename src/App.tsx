@@ -293,7 +293,44 @@ function toFriendlyFinalizeError(rawError: string, language: Language = "mn"): s
   return "Засварыг дуусгах үед алдаа гарлаа. Дахин оролдоно уу.";
 }
 
-const STUDIO_UNLOCK_KEY = "scrapbook-studio-unlock";
+// The studio password check lives server-side (POST /api/studio/unlock) — see
+// tryUnlockStudio below. Never compared here: a VITE_-prefixed var compared
+// client-side would ship the real password in plain text inside the built JS
+// bundle, readable via dev tools. Not persisted (no sessionStorage) either —
+// every fresh page load re-prompts.
+type UnlockResult =
+  | { status: "ok" }
+  | { status: "locked_out"; retryAfterMs: number }
+  | { status: "wrong"; attemptsRemaining?: number };
+
+async function tryUnlockStudio(password: string): Promise<UnlockResult> {
+  const base = (import.meta.env.VITE_SHARE_API as string | undefined)?.replace(/\/$/, "") || "";
+  const res = await fetch(`${base}/api/studio/unlock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (res.ok) return { status: "ok" };
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 429) {
+    return { status: "locked_out", retryAfterMs: body.retryAfterMs ?? 24 * 60 * 60 * 1000 };
+  }
+  return { status: "wrong", attemptsRemaining: body.attemptsRemaining };
+}
+
+function formatLockoutDurationEn(ms: number): string {
+  const hours = Math.ceil(ms / (60 * 60 * 1000));
+  if (hours >= 1) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  const minutes = Math.max(1, Math.ceil(ms / 60000));
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function formatLockoutDurationMn(ms: number): string {
+  const hours = Math.ceil(ms / (60 * 60 * 1000));
+  if (hours >= 1) return `${hours} цагийн`;
+  const minutes = Math.max(1, Math.ceil(ms / 60000));
+  return `${minutes} минутын`;
+}
 
 // â”€â”€â”€ Demo-route helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // All helpers below are ONLY activated when the URL contains the demo share ID.
@@ -829,17 +866,21 @@ export default function App() {
   const studioRootShareId = (
     import.meta.env.VITE_STUDIO_ROOT_SHARE_ID || "studio-root"
   ).trim();
-  const studioPassword = (import.meta.env.VITE_STUDIO_PASSWORD || "").trim();
+  // Purely a UI flag — whether to show the lock screen at all. Not secret; it
+  // doesn't reveal the password, just whether one's configured. The real check
+  // always happens server-side via tryUnlockStudio regardless of this.
+  const studioLockEnabled = import.meta.env.VITE_STUDIO_LOCK_ENABLED === "true";
   const [studioPasswordInput, setStudioPasswordInput] = useState("");
   const [studioAuthError, setStudioAuthError] = useState<string | null>(null);
+  const [studioCheckingPassword, setStudioCheckingPassword] = useState(false);
+  const [studioLockedOutFor, setStudioLockedOutFor] = useState<number | null>(null);
   const [studioUnlocked, setStudioUnlocked] = useState(() => {
     if (typeof window === "undefined") return true;
     const isShareLink = new URLSearchParams(window.location.search).has(
       "share",
     );
     if (isShareLink) return true;
-    if (!studioPassword) return true;
-    return window.sessionStorage.getItem(STUDIO_UNLOCK_KEY) === "1";
+    return !studioLockEnabled;
   });
   const [pages, setPages] = useState<PageData[]>(init.pages);
   const [sharedViewMode, setSharedViewMode] = useState(
@@ -1749,8 +1790,7 @@ export default function App() {
   const showPublishLinkUi =
     !isDemoShare && !sharedViewMode && canPublishShareLinks();
   const isPureViewOnly = sharedViewMode && !canEditSharedLink;
-  const shouldLockStudio =
-    !sharedViewMode && studioPassword.length > 0 && !studioUnlocked;
+  const shouldLockStudio = !sharedViewMode && studioLockEnabled && !studioUnlocked;
 
   const copyShareLink = async () => {
     if (!showPublishLinkUi) return;
@@ -1861,21 +1901,30 @@ export default function App() {
     window.setTimeout(() => setShareHint(null), 1400);
   };
 
-  const unlockStudio = () => {
-    if (!studioPassword) {
+  const unlockStudio = async () => {
+    if (!studioPasswordInput || studioCheckingPassword || studioLockedOutFor !== null) return;
+    setStudioCheckingPassword(true);
+    setStudioAuthError(null);
+    const result = await tryUnlockStudio(studioPasswordInput);
+    setStudioCheckingPassword(false);
+    setStudioPasswordInput("");
+    if (result.status === "ok") {
       setStudioUnlocked(true);
       return;
     }
-    if (studioPasswordInput === studioPassword) {
-      setStudioUnlocked(true);
-      setStudioAuthError(null);
-      setStudioPasswordInput("");
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(STUDIO_UNLOCK_KEY, "1");
-      }
+    if (result.status === "locked_out") {
+      setStudioLockedOutFor(result.retryAfterMs);
       return;
     }
-    setStudioAuthError(ui("Нууц үг буруу байна.", "Incorrect password."));
+    const left = result.attemptsRemaining;
+    setStudioAuthError(
+      left != null
+        ? ui(
+            `Нууц үг буруу байна — ${left} оролдлого үлдлээ (дараа нь 24 цагаар түгжигдэнэ).`,
+            `Wrong password — ${left} attempt${left === 1 ? "" : "s"} left before a 24h lockout.`,
+          )
+        : ui("Нууц үг буруу байна.", "Incorrect password."),
+    );
   };
 
   useEffect(() => {
@@ -2942,32 +2991,47 @@ export default function App() {
             <h1 className="text-lg font-semibold text-stone-900">
               {ui("Нууц үг оруулна уу", "Enter password")}
             </h1>
-            <p className="mt-1 text-sm text-stone-600">
-              {ui(
-                "Үндсэн scrapbook редакторт нэвтрэхийн тулд нууц үгээ оруулна уу.",
-                "Enter the password to access the main scrapbook editor.",
-              )}
-            </p>
-            <input
-              type="password"
-              value={studioPasswordInput}
-              onChange={(e) => setStudioPasswordInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") unlockStudio();
-              }}
-              placeholder="Password"
-              className="mt-4 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-            />
-            {studioAuthError && (
-              <p className="mt-2 text-xs text-rose-600">{studioAuthError}</p>
+            {studioLockedOutFor !== null ? (
+              <p className="mt-1 text-sm text-rose-600">
+                {ui(
+                  `Хэт олон буруу оролдлого. ${formatLockoutDurationMn(studioLockedOutFor)} дараа дахин оролдоно уу.`,
+                  `Too many wrong attempts. Try again in about ${formatLockoutDurationEn(studioLockedOutFor)}.`,
+                )}
+              </p>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-stone-600">
+                  {ui(
+                    "Үндсэн scrapbook редакторт нэвтрэхийн тулд нууц үгээ оруулна уу.",
+                    "Enter the password to access the main scrapbook editor.",
+                  )}
+                </p>
+                <input
+                  type="password"
+                  value={studioPasswordInput}
+                  onChange={(e) => {
+                    setStudioPasswordInput(e.target.value);
+                    setStudioAuthError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") unlockStudio();
+                  }}
+                  placeholder="Password"
+                  className="mt-4 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                {studioAuthError && (
+                  <p className="mt-2 text-xs text-rose-600">{studioAuthError}</p>
+                )}
+                <button
+                  type="button"
+                  onClick={unlockStudio}
+                  disabled={!studioPasswordInput || studioCheckingPassword}
+                  className="mt-4 w-full rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+                >
+                  {studioCheckingPassword ? ui("Шалгаж байна…", "Checking…") : ui("Нэвтрэх", "Sign in")}
+                </button>
+              </>
             )}
-            <button
-              type="button"
-              onClick={unlockStudio}
-              className="mt-4 w-full rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-black"
-            >
-              {ui("Нэвтрэх", "Sign in")}
-            </button>
           </div>
         </div>
         {isLoadingSceneVisible && (

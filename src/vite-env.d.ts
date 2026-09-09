@@ -18,8 +18,12 @@ interface ImportMetaEnv {
   readonly VITE_GIPHY_API_KEY?: string;
   /** Optional Pixabay API key for graphic/vector search. */
   readonly VITE_PIXABAY_API_KEY?: string;
-  /** Optional password lock for the main (non-share) editor site. */
-  readonly VITE_STUDIO_PASSWORD?: string;
+  /**
+   * Set to "true" to show the studio password lock screen at all. Not secret —
+   * the actual password is server-only (STUDIO_PASSWORD on share-server.mjs) and
+   * checked via POST /api/studio/unlock, never compared client-side.
+   */
+  readonly VITE_STUDIO_LOCK_ENABLED?: string;
   /** Optional fixed server id for main studio website data. */
   readonly VITE_STUDIO_ROOT_SHARE_ID?: string;
 }
