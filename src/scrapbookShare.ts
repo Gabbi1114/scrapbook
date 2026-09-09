@@ -289,22 +289,28 @@ export function parseSharedScrapbookResponse(
   return { pages, editUntil, mediaBytes, musicUrl, appBackgroundImage };
 }
 
-/** POST scrapbook to server; returns short id for `?share=id` links. */
+/** POST scrapbook to server; returns short id for `?share=id` links.
+ *  studioPassword: required when the API has STUDIO_PASSWORD set — checked
+ *  server-side (POST /api/studio/unlock's same 2-strike/24h lockout applies here
+ *  too). Independent of VITE_SHARE_CREATE_SECRET below — that one's a static
+ *  build-time secret, this one's the studio password you just typed in. */
 export async function uploadPagesForShare(
   pages: PageData[],
   musicUrl?: string,
   appBackgroundImage?: string,
+  studioPassword?: string,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const base = shareApiBase();
   const url = `${base}/api/share`;
   const editDays = editDaysForNewServerShare();
-  const requestPayload: PayloadV1 & { editDays?: number } = {
+  const requestPayload: PayloadV1 & { editDays?: number; studioPassword?: string } = {
     v: 1,
     pages,
     ...(musicUrl && musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}),
     ...(appBackgroundImage && appBackgroundImage.trim()
       ? { appBackgroundImage: appBackgroundImage.trim() }
       : {}),
+    ...(studioPassword ? { studioPassword } : {}),
   };
   if (editDays !== undefined) requestPayload.editDays = editDays;
   const headers: Record<string, string> = {
@@ -533,6 +539,7 @@ export async function resolveShareableUrl(
   pages: PageData[],
   musicUrl?: string,
   appBackgroundImage?: string,
+  studioPassword?: string,
 ): Promise<
   | { kind: "hash"; url: string }
   | { kind: "server"; url: string }
@@ -544,7 +551,7 @@ export async function resolveShareableUrl(
       reason: "Publishing is disabled in this app build.",
     };
   }
-  const up = await uploadPagesForShare(pages, musicUrl, appBackgroundImage);
+  const up = await uploadPagesForShare(pages, musicUrl, appBackgroundImage, studioPassword);
   if (up.ok) return { kind: "server", url: buildShareUrlWithQueryId(up.id) };
   if (up.ok === false) {
     return {

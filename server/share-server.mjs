@@ -126,31 +126,54 @@ function getUnlockState(ip) {
   return state;
 }
 
-app.post("/api/studio/unlock", (req, res) => {
-  if (!STUDIO_PASSWORD) return res.status(503).json({ error: "not_configured" });
-
-  const state = getUnlockState(req.ip);
+// Shared by /api/studio/unlock and requireStudioPassword below — same lockout state
+// either way, so an attacker can't dodge the 2-strike lockout by just guessing
+// against whichever endpoint doesn't enforce it.
+function checkPasswordAttempt(ip, candidate) {
+  const state = getUnlockState(ip);
   if (state.lockedUntil) {
-    const retryAfterMs = state.lockedUntil - Date.now();
-    res.set("Retry-After", String(Math.ceil(retryAfterMs / 1000)));
-    return res.status(429).json({ error: "locked_out", retryAfterMs });
+    return { ok: false, status: 429, body: { error: "locked_out", retryAfterMs: state.lockedUntil - Date.now() } };
   }
-
-  if (!passwordMatches(req.body?.password)) {
+  if (!passwordMatches(candidate)) {
     state.fails += 1;
     if (state.fails >= MAX_FAILED_UNLOCK_ATTEMPTS) {
       state.lockedUntil = Date.now() + UNLOCK_LOCKOUT_MS;
-      res.set("Retry-After", String(Math.ceil(UNLOCK_LOCKOUT_MS / 1000)));
-      return res.status(429).json({ error: "locked_out", retryAfterMs: UNLOCK_LOCKOUT_MS });
+      return { ok: false, status: 429, body: { error: "locked_out", retryAfterMs: UNLOCK_LOCKOUT_MS } };
     }
-    return res
-      .status(401)
-      .json({ error: "wrong_password", attemptsRemaining: MAX_FAILED_UNLOCK_ATTEMPTS - state.fails });
+    return {
+      ok: false,
+      status: 401,
+      body: { error: "wrong_password", attemptsRemaining: MAX_FAILED_UNLOCK_ATTEMPTS - state.fails }
+    };
   }
+  unlockAttemptsByIp.delete(ip);
+  return { ok: true };
+}
 
-  unlockAttemptsByIp.delete(req.ip);
+function sendPasswordFailure(res, result) {
+  if (result.body.retryAfterMs) res.set("Retry-After", String(Math.ceil(result.body.retryAfterMs / 1000)));
+  res.status(result.status).json(result.body);
+}
+
+app.post("/api/studio/unlock", (req, res) => {
+  if (!STUDIO_PASSWORD) return res.status(503).json({ error: "not_configured" });
+  const result = checkPasswordAttempt(req.ip, req.body?.password);
+  if (!result.ok) return sendPasswordFailure(res, result);
   res.json({ ok: true });
 });
+
+// Guards share CREATION specifically — reading/editing/finalizing an existing share
+// stays open (that's how someone who received a real link uses it, without needing
+// the studio password). Without this, the studio password screen only ever gated
+// whether the React app rendered the studio page, never this API — anyone could
+// call it directly (curl, a script) and mint unlimited shares regardless of the
+// lock screen or VITE_SHARE_CREATE_SECRET (a separate, independent gate).
+function requireStudioPassword(req, res, next) {
+  if (!STUDIO_PASSWORD) return next(); // lock not configured — nothing to enforce
+  const result = checkPasswordAttempt(req.ip, req.body?.studioPassword);
+  if (!result.ok) return sendPasswordFailure(res, result);
+  next();
+}
 
 function shareFilePath(id) {
   return path.join(DATA_DIR, `${path.basename(id)}.json`);
@@ -511,7 +534,7 @@ async function transcodeVideoForStorage(inputBuffer, mime) {
   }
 }
 
-app.post("/api/share", async (req, res) => {
+app.post("/api/share", requireStudioPassword, async (req, res) => {
   try {
     const requiredSecret = process.env.SHARE_CREATE_SECRET;
     if (requiredSecret) {

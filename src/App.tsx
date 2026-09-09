@@ -871,6 +871,9 @@ export default function App() {
   // always happens server-side via tryUnlockStudio regardless of this.
   const studioLockEnabled = import.meta.env.VITE_STUDIO_LOCK_ENABLED === "true";
   const [studioPasswordInput, setStudioPasswordInput] = useState("");
+  // In-memory only (never persisted, never logged) — the create-share endpoint now
+  // requires it server-side too (see server/share-server.mjs requireStudioPassword).
+  const [studioPassword, setStudioPassword] = useState<string | undefined>(undefined);
   const [studioAuthError, setStudioAuthError] = useState<string | null>(null);
   const [studioCheckingPassword, setStudioCheckingPassword] = useState(false);
   const [studioLockedOutFor, setStudioLockedOutFor] = useState<number | null>(null);
@@ -1798,6 +1801,7 @@ export default function App() {
       pages,
       backgroundMusicUrl,
       appBackgroundImageUrl,
+      studioPassword,
     );
     if (resolved.kind === "hash" || resolved.kind === "server") {
       try {
@@ -1903,12 +1907,14 @@ export default function App() {
 
   const unlockStudio = async () => {
     if (!studioPasswordInput || studioCheckingPassword || studioLockedOutFor !== null) return;
+    const attempted = studioPasswordInput;
     setStudioCheckingPassword(true);
     setStudioAuthError(null);
-    const result = await tryUnlockStudio(studioPasswordInput);
+    const result = await tryUnlockStudio(attempted);
     setStudioCheckingPassword(false);
     setStudioPasswordInput("");
     if (result.status === "ok") {
+      setStudioPassword(attempted);
       setStudioUnlocked(true);
       return;
     }
